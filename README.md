@@ -35,7 +35,7 @@ Enabling the plugin opens the **Git changes** panel in the right sidebar. Reopen
 6. Type a commit message and press `Ctrl+Enter` (`Cmd+Enter` on macOS), or use the toolbar. With nothing staged, a commit stages everything first. An empty message is filled in with the name of the most changed file.
 7. Pull is fast-forward only and runs only when there are no uncommitted changes. Resolve merge conflicts in an external Git tool.
 
-Open notes are saved before every Git action, and only one Git action runs at a time. The lists refresh automatically when vault files change and when the `.git` folder changes, for example after a commit from a terminal. A **변경사항 새로고침** (refresh) command is available as a fallback. All commands can be given hotkeys under **Settings → Hotkeys**.
+Open notes are saved before every Git action, and only one Git action runs at a time. The lists refresh automatically: the plugin watches the whole vault folder, so edits to hidden paths such as `.obsidian` and Git commands run from a terminal are picked up as well. A **변경사항 새로고침** (refresh) command is available as a fallback. All commands can be given hotkeys under **Settings → Hotkeys**.
 
 ### Settings
 
@@ -51,7 +51,7 @@ While the plugin is enabled, Obsidian's shared notice area moves to the bottom r
 ## Permissions and disclosures
 
 - **Shell execution (`child_process`)**: the plugin works by running your installed `git` executable, always with an argument list and never through a shell. It runs no other program. The working directory is always the vault root.
-- **Direct filesystem access (`fs`)**: used only inside the vault folder, to check that the vault is the repository root, to preview untracked files in the diff view, to compare open editors with the saved files before exit, and to watch the `.git` folder for changes. Nothing outside the vault is read or written.
+- **Direct filesystem access (`fs`)**: used only inside the vault folder, to check that the vault is the repository root, to preview untracked files in the diff view, to compare open editors with the saved files before exit, and to watch the vault folder for changes. Nothing outside the vault is read or written.
 - **Network**: the plugin makes no network requests of its own. `git pull` and `git push` contact the remotes you configured. No telemetry.
 - **Clipboard**: written only when you select a copy button in the diff view. Never read.
 - **Local storage**: the result of the last push on exit is kept per device, outside the vault, so that notices never modify `data.json`.
@@ -119,7 +119,7 @@ Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타�
 - 작업 전에 열린 텍스트 문서를 저장하고 저장 내용을 확인합니다. Git 작업은 한 번에 하나씩 실행합니다.
 - `현재 문서 저장 후 스테이지`, `모두 저장 후 스테이지`, `커밋`, `커밋 후 Push`, `Pull`, `Push`, `변경사항 새로고침` 명령에도 Obsidian 설정 → 단축키에서 키를 지정할 수 있습니다. 기존 Obsidian 저장 단축키를 자동으로 덮어쓰지는 않습니다.
 - Pull은 변경사항이 없는 상태에서 fast-forward 방식으로 실행합니다. 병합 충돌 해결, 원격 URL/인증, 브랜치 관리와 작성자 이름/이메일 설정은 외부 Git 도구에서 합니다. upstream이 없으면 `origin` 또는 유일한 원격에 현재 브랜치를 연결해 Push합니다.
-- 목록은 파일 변화를 감지해 로컬 조회로 갱신합니다. Obsidian이 알려 주는 보관함 파일의 생성·수정·삭제·이름 변경과, 외부 터미널의 커밋·fetch·checkout처럼 `.git` 폴더만 바뀌는 경우(폴더 직접 감시)를 모두 포함하며, 연속된 변경은 0.5초로 모아서 처리합니다. 마우스·포커스 이동이나 타이머로는 갱신하지 않습니다. `.obsidian` 같은 숨김 경로만 바뀐 경우는 감지되지 않을 수 있으며, 이때는 `변경사항 새로고침` 명령을 쓰거나 다음 변경 때 함께 반영됩니다. Pull 버튼의 Pull이 실패하거나 미커밋 변경으로 중단되어도 로컬 목록은 갱신하고 이유를 알립니다. 명령 팔레트의 `Pull`도 같은 동작을 합니다.
+- 목록은 파일 변화를 감지해 로컬 조회로 갱신합니다. 보관함 폴더 전체를 직접 감시하므로 Obsidian이 알려 주지 않는 `.obsidian` 같은 숨김 경로의 변경과, 외부 터미널의 커밋·fetch·checkout처럼 `.git` 폴더만 바뀌는 경우도 포함합니다. 연속된 변경은 0.5초로 모아서 처리하며, 마우스·포커스 이동이나 타이머로는 갱신하지 않습니다. 하위 폴더 감시를 지원하지 않는 환경에서는 `변경사항 새로고침` 명령을 쓸 수 있습니다. Pull 버튼의 Pull이 실패하거나 미커밋 변경으로 중단되어도 로컬 목록은 갱신하고 이유를 알립니다. 명령 팔레트의 `Pull`도 같은 동작을 합니다.
 - 커밋 입력창에서 `Ctrl+Enter`(macOS는 `Cmd+Enter`도 지원)로 커밋합니다.
 - 커밋 입력창은 한 줄 높이로 시작하며 줄바꿈·자동 줄바꿈에 맞춰 늘어납니다. 내용을 지우거나 커밋을 완료하면 다시 줄어들고, 패널 폭 변경에도 맞춰집니다.
 - `시작할 때 Pull`, `종료할 때 Push`, `종료 전 미커밋 변경 경고`는 기본 켜짐이며 설정에서 변경할 수 있습니다. 기존에 저장한 설정은 유지됩니다. 종료 Push는 이미 만든 커밋만 최대 15초 동안 보내며 자동 스테이지·커밋은 하지 않습니다. 실패하면 다음 실행에 안내하고, 수동 Push 성공 후 안내를 지웁니다.

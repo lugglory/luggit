@@ -83,22 +83,30 @@ class GitService {
     }
     return { repo: true, files, unsaved: [...new Set(unsaved)] };
   }
-  // Vault events do not cover Git commands run outside Obsidian (commit, fetch,
-  // checkout), which only touch .git. Returns a closer, or null without a repository.
+  // Obsidian's vault events skip hidden paths (.obsidian, dotfiles) and Git commands
+  // run outside the app, which only touch .git. Watch the whole vault folder instead.
+  // Returns a closer, or null when nothing can be watched.
   watch(onChange) {
     // libuv aborts the whole process when a Windows 8.3 short path (USERNA~1) is
     // watched, so always resolve to the long path first.
-    let dir;
-    try { dir = syncFs.realpathSync.native(path.join(this.root, '.git')); } catch { return null; }
+    let root;
+    try { root = syncFs.realpathSync.native(this.root); } catch { return null; }
     // Object writes always come with an index or ref change; skip them and lock files.
-    const listener = (_type, name) => { if (!/^objects([\\/]|$)|\.lock$/.test(String(name || ''))) onChange(); };
-    let watcher;
-    try { watcher = syncFs.watch(dir, { recursive: true }, listener); }
+    const listener = prefix => (_type, name) => {
+      const changed = (prefix + String(name || '')).replace(/\\/g, '/');
+      if (!/^\.git\/objects(\/|$)|\.lock$/.test(changed)) onChange();
+    };
+    const watchers = [];
+    try { watchers.push(syncFs.watch(root, { recursive: true }, listener(''))); }
     catch {
-      try { watcher = syncFs.watch(dir, listener); } catch { return null; }
+      // No recursive watching on this platform: cover at least the top level and .git.
+      for (const [dir, prefix] of [[root, ''], [path.join(root, '.git'), '.git/']]) {
+        try { watchers.push(syncFs.watch(dir, listener(prefix))); } catch { /* Missing folder. */ }
+      }
     }
-    watcher.on('error', () => watcher.close());
-    return () => watcher.close();
+    if (!watchers.length) return null;
+    for (const watcher of watchers) watcher.on('error', () => watcher.close());
+    return () => { for (const watcher of watchers) watcher.close(); };
   }
   async pushOnExit() {
     if (!(await this.isRepo())) return false;

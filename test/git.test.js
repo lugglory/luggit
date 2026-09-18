@@ -150,7 +150,7 @@ test('exit push sends existing commits and never stages or commits working chang
   assert.equal((await repo.git.run(['rev-list', '--count', 'HEAD'])).trim(), '1');
 });
 
-test('watching .git reports Git commands run outside the plugin', async t => {
+test('watching the vault reports outside Git commands and hidden paths', async t => {
   const repo = await repository(t);
   await repo.write('note.md', 'one\n'); await repo.git.commit('initial');
   let changes = 0;
@@ -163,4 +163,10 @@ test('watching .git reports Git commands run outside the plugin', async t => {
   await repo.git.run(['commit', '--allow-empty', '-m', 'outside']);
   for (let i = 0; i < 40 && !changes; i++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.ok(changes > 0);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  changes = 0;
+  await fs.mkdir(path.join(repo.root, '.obsidian/plugins/sample'), { recursive: true });
+  await repo.write('.obsidian/plugins/sample/main.js', 'changed');
+  for (let i = 0; i < 40 && !changes; i++) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.ok(changes > 0, 'Hidden paths that Obsidian never reports are detected');
 });
