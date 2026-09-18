@@ -100,6 +100,11 @@ app.whenReady().then(async () => {
     assert.equal(sections.titleLeftAligned, true, 'Title alignment overrides centered host buttons');
     assert.equal(sections.headerCoversActions, true, 'Section highlight extends across the widened action buttons');
     assert.equal(sections.childIndent, 16, 'Child rows use a shallow indentation');
+    const states = await win.webContents.executeJavaScript('runButtonStateTest()', true);
+    assert.deepEqual(states.clean, { commitPush: 'disabled', commit: 'disabled', stage: 'disabled', unstage: 'disabled', push: 'enabled', pull: 'enabled' }, 'Nothing to do: certain no-ops are disabled; Push and Pull stay available');
+    assert.deepEqual(states.waiting, { commitPush: 'disabled', commit: 'disabled', stage: 'disabled', unstage: 'disabled', push: 'enabled+highlight', pull: 'enabled' }, 'Waiting commits highlight Push only; commit and push cannot commit nothing');
+    assert.deepEqual(states.changed, { commitPush: 'enabled+highlight', commit: 'enabled+highlight', stage: 'enabled', unstage: 'disabled', push: 'enabled', pull: 'enabled' }, 'Changes highlight the commit actions; staging is a plain choice');
+    assert.deepEqual(states.staged, { commitPush: 'enabled+highlight', commit: 'enabled+highlight', stage: 'disabled', unstage: 'enabled', push: 'enabled', pull: 'enabled' });
     const focus = await win.webContents.executeJavaScript('runPanelFocusTest()', true);
     assert.deepEqual(focus, { afterEntry: 0, afterInternal: 0, afterFileChanges: 1, pulls: 0, gap: '0px' }, 'Pointer and focus movement never refresh; file change requests coalesce into one local refresh; toolbar gaps are removed');
     const recent = await win.webContents.executeJavaScript('runRecentDiffTest()', true);

@@ -192,10 +192,16 @@ class GitView extends ItemView {
     this.unstageAllButton.disabled = this.plugin.busy || !snapshot.files.some(file => file.staged);
     this.message.value = this.plugin.draft;
     this.resizeMessage();
-    this.commitButton.toggleClass('is-pending', snapshot.files.length > 0);
+    // Disable only what certainly cannot work: staging and committing depend on the
+    // file list alone. The ahead count is an estimate, so Push is highlighted but
+    // never disabled, and nothing is known about Pull before asking the remote.
+    const changed = snapshot.files.length > 0;
+    for (const button of [this.commitButton, this.commitPushButton]) {
+      button.disabled = this.plugin.busy || !changed;
+      button.toggleClass('is-pending', changed);
+    }
     this.pushButton.toggleClass('is-pending', snapshot.ahead > 0);
     setTooltip(this.pushButton, `Push · 대기 커밋 ${snapshot.ahead}개`, { placement: 'bottom' });
-    this.commitPushButton.toggleClass('is-pending', snapshot.files.length > 0 || snapshot.ahead > 0);
     this.renderFiles(this.staged, snapshot.files.filter(file => file.staged), true);
     this.renderFiles(this.unstaged, snapshot.files.filter(file => file.unstaged), false);
     this.recent.list.empty();

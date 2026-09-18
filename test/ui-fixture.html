@@ -155,6 +155,23 @@ async function runSectionTest() {
   return { states, rects, expandedHitArea: edgeTarget === headerButtons[1], actions: events, actionDidNotCollapse: !view.unstaged.list.hidden,
     titleLeftAligned, headerCoversActions, childIndent };
 }
+function runButtonStateTest() {
+  const view = gitPlugin.app.workspace.getLeavesOfType()[0].view;
+  const state = button => (button.disabled ? 'disabled' : 'enabled') + (button.classList.contains('is-pending') ? '+highlight' : '');
+  const read = snapshot => {
+    view.render({ repo: true, recent: [], ...snapshot });
+    return { commitPush: state(view.commitPushButton), commit: state(view.commitButton), stage: state(view.stageAllButton),
+      unstage: state(view.unstageAllButton), push: state(view.pushButton), pull: state(view.pullButton) };
+  };
+  const result = {
+    clean: read({ files: [], ahead: 0 }),
+    waiting: read({ files: [], ahead: 2 }),
+    changed: read({ files: [{ path: 'a.md', index: ' ', work: 'M', staged: false, unstaged: true }], ahead: 0 }),
+    staged: read({ files: [{ path: 'a.md', index: 'M', work: ' ', staged: true, unstaged: false }], ahead: 0 }),
+  };
+  gitPlugin.render();
+  return result;
+}
 async function runPanelFocusTest() {
   const plugin = gitPlugin, leaf = plugin.app.workspace.getLeavesOfType()[0], view = leaf.view;
   const refresh = plugin.refresh, remote = plugin.pullFromRemote;
