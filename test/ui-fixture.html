@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+:root { --font-ui-small: 13px; --font-ui-smaller: 12px; --font-smaller: 12px; --font-monospace: Consolas, monospace; --text-muted: #aaa; --text-normal: #e1e1e1; --text-faint: #888; --text-accent: #b6a4ff; --text-on-accent: #171421; --interactive-accent: #b6a4ff; --background-modifier-border: #393939; --background-modifier-hover: #333; }
+* { box-sizing: border-box; } body { background: #242424; color: #e1e1e1; font: 13px 'Malgun Gothic', sans-serif; margin: 0; } button, textarea { font: inherit; border-radius: 5px; border: 1px solid #444; } textarea { padding: 10px; background: #1e1e1e; color: inherit; } a:focus-visible { outline: 1px solid #b6a4ff; } svg { stroke: currentColor; stroke-width: 2; fill: none; } [hidden] { display: none !important; }
+.fixture-chrome { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid #393939; color: #aaa; } .fixture-chrome svg { width: 20px; height: 20px; } .fixture-chrome span { display: inline-flex; }
+a:hover { color: #f88; text-decoration: underline; }
+.modal-container { position: fixed; inset: 0; display: grid; place-items: center; background: #0008; }
+.modal { position: relative; width: min(520px, 90vw); background: #292929; border: 1px solid #555; border-radius: 12px; padding: 24px; }
+.modal button { color: #eee; background: #444; padding: 8px 14px; cursor: pointer; }
+.modal button.mod-warning { background: #ac3c40; }
+.modal button:focus-visible { outline: 2px solid #b6a4ff; outline-offset: 3px; }
+.modal .modal-close-button { position: absolute; right: 12px; top: 12px; padding: 4px; border: 0; background: transparent; }
+.modal.luggit-diff-modal { width: min(1040px, 92vw); }
+</style></head><body><div class="fixture-chrome" id="fixture-chrome"></div><script>
+// The production plugin is loaded unchanged. Only the Obsidian host boundary is
+// substituted; Electron provides real DOM layout and click/focus behavior.
+const fs = require('node:fs'), path = require('node:path');
+HTMLElement.prototype.createEl = function(tag, options = {}) {
+  const el = document.createElement(tag); if (options.text) el.textContent = options.text;
+  if (options.cls) el.className = options.cls;
+  if (options.placeholder) el.placeholder = options.placeholder;
+  for (const [key, value] of Object.entries(options.attr || {})) el.setAttribute(key, value);
+  this.append(el); return el;
+};
+HTMLElement.prototype.createDiv = function(options) { return this.createEl('div', options); };
+HTMLElement.prototype.createSpan = function(options) { return this.createEl('span', options); };
+HTMLElement.prototype.empty = function() { this.replaceChildren(); };
+HTMLElement.prototype.addClass = function(name) { this.classList.add(name); };
+HTMLElement.prototype.removeClass = function(name) { this.classList.remove(name); };
+HTMLElement.prototype.toggleClass = function(name, value) { this.classList.toggle(name, value); };
+HTMLElement.prototype.setText = function(text) { this.textContent = text; };
+HTMLElement.prototype.isShown = function() { return this.getClientRects().length > 0 && getComputedStyle(this).display !== 'none'; };
+const iconPaths = {
+  'git-commit-horizontal': '<circle cx="12" cy="12" r="3"/><path d="M3 12h6m6 0h6"/>',
+  'arrow-up-from-line': '<path d="m7 8 5-5 5 5M12 3v12M5 21h14"/>',
+  'arrow-down-to-line': '<path d="m7 10 5 5 5-5M12 3v12M5 21h14"/>',
+  'refresh-cw': '<path d="M20 11a8 8 0 0 0-14-5L3 9m0-6v6h6m-5 4a8 8 0 0 0 14 5l3-3m0 6v-6h-6"/>',
+  'minus': '<path d="M5 12h14"/>', 'plus': '<path d="M5 12h14M12 5v14"/>',
+  'chevron-right': '<path d="m9 6 6 6-6 6"/>', 'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+  'undo-2': '<path d="M3 7h10a7 7 0 0 1 0 14M3 7l5-5M3 7l5 5"/>',
+  'copy': '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
+  'clipboard-list': '<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H5v16h14V5h-3M9 11h6M9 15h6"/>',
+  'file-pen-line': '<path d="M9 21H4V3h10l6 6v3M14 3v6h6m-9 9 7-7 3 3-7 7h-3z"/>',
+  'arrow-right-to-line': '<path d="M21 4v16M3 12h12m-5-5 5 5-5 5"/>',
+  'arrow-left-to-line': '<path d="M3 4v16M21 12H9m5-5-5 5 5 5"/>',
+  'arrow-up-to-line': '<path d="M4 3h16M12 21V9m-5 5 5-5 5 5"/>',
+};
+const obsidian = {
+  Plugin: class { async loadData() { return {}; } registerView(type, factory) { this.factory = factory; } addRibbonIcon(name) { obsidian.setIcon(document.querySelector('#fixture-chrome').createSpan(), name); } addCommand(command) { (this.commands ||= []).push(command); } addSettingTab() {} registerEvent() {} registerDomEvent(el, event, handler, options) { el.addEventListener(event, handler, options); this.register(() => el.removeEventListener(event, handler, options)); } registerInterval(id) { clearInterval(id); } register(callback) { (this.cleanups ||= []).push(callback); } },
+  ItemView: class { constructor(leaf) { this.leaf = leaf; this.contentEl = document.body.createDiv(); } },
+  Modal: class {
+    constructor() { this.containerEl = document.createElement('div'); this.containerEl.className = 'modal-container'; this.modalEl = this.containerEl.createDiv({ cls: 'modal' }); this.titleEl = this.modalEl.createEl('h3', { cls: 'modal-title' }); this.contentEl = this.modalEl.createDiv({ cls: 'modal-content' }); const close = this.modalEl.createEl('button', { cls: 'modal-close-button', text: '×', attr: { 'aria-label': '닫기' } }); close.onclick = () => this.close(); }
+    setTitle(title) { this.titleEl.textContent = title; }
+    open() { window.lastModal = this; document.body.append(this.containerEl); this.containerEl.addEventListener('keydown', event => { if (event.key === 'Escape') this.close(); }); this.onOpen(); }
+    close() { this.onClose(); this.containerEl.remove(); }
+  }, MarkdownView: class {}, TextFileView: class {}, PluginSettingTab: class {}, Setting: class {},
+  FileSystemAdapter: class { getBasePath() { return __dirname; } }, Notice: class { constructor(text) { notices.push(text); } hide() {} },
+  addIcon(name, content) { customIcons[name] = content; },
+  setTooltip(el, text) { el.dataset.tooltip = text; el.setAttribute('aria-label', text); },
+  setIcon(el, name) { el.dataset.icon = name; el.innerHTML = '<svg viewBox="0 0 ' + (customIcons[name] ? '100 100' : '24 24') + '">' + (customIcons[name] || iconPaths[name] || '<path d="M5 12h14M12 5v14"/>') + '</svg>'; },
+};
+const customIcons = {};
+const notices = [];
+const gitWorkspaceEvents = new Map();
+async function runTest() {
+  const output = { exports: {} };
+  const filename = path.join(__dirname, '../main.js');
+  new Function('require', 'module', fs.readFileSync(filename, 'utf8'))(name => name === 'obsidian' ? obsidian : require(name), output);
+  const plugin = window.gitPlugin = new output.exports(); const leaves = [], calls = [];
+  plugin.app = { vault: { adapter: new obsidian.FileSystemAdapter(), on() {} }, workspace: { on(name, callback) { gitWorkspaceEvents.set(name, callback); }, onLayoutReady() {}, getLeavesOfType() { return leaves; }, iterateAllLeaves() {} } };
+  await plugin.onload();
+  plugin.git = {
+    async status() { return { repo: true, branch: 'obsidian-plugin', ahead: 2, files: [
+      { path: '회의/제품 아이디어.md', index: 'M', work: ' ', staged: true },
+      { path: '오늘의 메모.md', index: ' ', work: 'M', unstaged: true },
+      { path: '아주 긴 폴더 이름/오른쪽 문서 패널에 보낼 내용.md', index: '?', work: '?', unstaged: true },
+    ] }; },
+    async recentFiles() { return ['회의/제품 아이디어.md', '리서치/읽을거리.md', '기록/삭제된 메모.md']; },
+    async commit(message) { calls.push('commit:' + message); }, async push() { calls.push('push'); },
+  };
+  const leaf = {}; leaf.view = plugin.factory(leaf); leaves.push(leaf); await leaf.view.onOpen();
+  obsidian.setIcon(document.querySelector('#fixture-chrome').createSpan(), leaf.view.getIcon());
+  document.querySelector('#fixture-chrome').createSpan({ text: 'Git 변경사항' });
+  const buttons = [...document.querySelectorAll('.luggit-icon')];
+  const iconOnly = buttons.every(button => !button.textContent.trim() && button.querySelector('svg') && button.getAttribute('aria-label') && button.dataset.tooltip && !button.hasAttribute('title'));
+  const combined = document.querySelector('[aria-label="커밋 후 Push"]');
+  const combinedIcons = combined.querySelectorAll('svg').length;
+  const pending = combined.classList.contains('is-pending');
+  const message = leaf.view.message, messageHeight = () => message.getBoundingClientRect().height;
+  const typeMessage = value => { message.value = value; message.dispatchEvent(new Event('input')); return messageHeight(); };
+  const initialHeight = messageHeight();
+  const multilineHeight = typeMessage('첫 줄\n두 번째 줄\n세 번째 줄');
+  const wrappedHeight = typeMessage('자동 줄바꿈에 따라 입력창 높이가 조정됩니다. '.repeat(8));
+  const wideHeight = messageHeight();
+  message.style.width = '180px';
+  for (let frame = 0; frame < 10 && messageHeight() <= wideHeight; frame++) {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  const narrowHeight = messageHeight();
+  message.style.width = '';
+  const clearedHeight = typeMessage('');
+  const messageSizing = { initialHeight, multilineHeight, wrappedHeight, wideHeight, narrowHeight, clearedHeight };
+  leaf.view.message.value = '테스트 커밋'; leaf.view.message.dispatchEvent(new Event('input'));
+  combined.click();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const toolbarAtTop = combined.closest('.luggit-header')?.getBoundingClientRect().bottom <= leaf.view.message.getBoundingClientRect().top;
+  const noInlineStatus = !document.querySelector('.luggit-branch, .luggit-status');
+  const sectionActions = [...document.querySelectorAll('.luggit-section-header')].slice(0, 2).map(header => [...header.querySelectorAll('.luggit-actions button')].map(button => button.getAttribute('aria-label')));
+  const topActions = [...document.querySelectorAll('.luggit-header button')].map(button => button.getAttribute('aria-label'));
+  const toolbar = document.querySelector('.luggit-header');
+  const toolbarNamedWithoutTooltip = !toolbar.hasAttribute('aria-label') && !toolbar.hasAttribute('title') &&
+    document.getElementById(toolbar.getAttribute('aria-labelledby'))?.textContent === 'Git 작업';
+  let refreshClicks = 0;
+  const pullFromRemote = plugin.pullFromRemote;
+  plugin.pullFromRemote = () => { refreshClicks++; };
+  toolbar.querySelector('[aria-label="Pull · 원격 변경 가져오기"]').click();
+  plugin.pullFromRemote = pullFromRemote;
+  messageSizing.afterCommit = messageHeight();
+  return { iconOnly, combinedIcons, calls, pending, toolbarAtTop, noInlineStatus, sectionActions, topActions, toolbarNamedWithoutTooltip, refreshClicks, notices, messageSizing, overflow: document.documentElement.scrollWidth > innerWidth };
+}
+async function runSectionTest() {
+  const hostButtonStyle = document.head.createEl('style', { text: 'button { justify-content: center; }' });
+  const view = gitPlugin.app.workspace.getLeavesOfType('luggit-changes')[0].view;
+  const states = [];
+  for (const section of [view.staged, view.unstaged, view.recent]) {
+    section.toggle.click();
+    const collapsed = section.list.hidden && section.toggle.getAttribute('aria-expanded') === 'false';
+    view.render(gitPlugin.snapshot);
+    const stayedCollapsed = section.list.hidden && getComputedStyle(section.list).display === 'none';
+    section.toggle.click();
+    states.push({ collapsed, stayedCollapsed, reopened: !section.list.hidden && section.toggle.getAttribute('aria-expanded') === 'true',
+      controlsList: section.toggle.getAttribute('aria-controls') === section.list.id });
+  }
+  const headerButtons = view.unstaged.buttons;
+  const rowButtons = [...view.unstaged.list.querySelector('.luggit-actions').children];
+  const rects = headerButtons.map((button, index) => {
+    const header = button.getBoundingClientRect(), row = rowButtons[index].getBoundingClientRect();
+    return { width: header.width, rowWidth: row.width, centerOffset: (header.left + header.right - row.left - row.right) / 2 };
+  });
+  const plus = headerButtons[1].getBoundingClientRect(), rowPlus = rowButtons[1].getBoundingClientRect();
+  const edgeTarget = document.elementFromPoint(rowPlus.left - 1, plus.top + plus.height / 2)?.closest('button');
+  const events = [], perform = gitPlugin.perform;
+  gitPlugin.perform = label => events.push(label);
+  edgeTarget?.click();
+  gitPlugin.perform = perform;
+  const toggle = view.unstaged.toggle, toggleRect = toggle.getBoundingClientRect();
+  const titleLeftAligned = getComputedStyle(toggle).justifyContent === 'flex-start' && Math.abs(toggle.firstElementChild.getBoundingClientRect().left - toggleRect.left) < 1;
+  const headerRect = toggle.parentElement.getBoundingClientRect();
+  const headerCoversActions = headerRect.right >= plus.right && headerRect.left <= headerButtons[0].getBoundingClientRect().left;
+  const childIndent = view.unstaged.list.firstElementChild.getBoundingClientRect().left - toggleRect.left;
+  hostButtonStyle.remove();
+  return { states, rects, expandedHitArea: edgeTarget === headerButtons[1], actions: events, actionDidNotCollapse: !view.unstaged.list.hidden,
+    titleLeftAligned, headerCoversActions, childIndent };
+}
+async function runPanelFocusTest() {
+  const plugin = gitPlugin, leaf = plugin.app.workspace.getLeavesOfType()[0], view = leaf.view;
+  const refresh = plugin.refresh, remote = plugin.pullFromRemote;
+  let refreshes = 0, pulls = 0;
+  plugin.refresh = async () => { refreshes++; };
+  plugin.pullFromRemote = async () => { pulls++; };
+  const enter = relatedTarget => view.message.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget }));
+  const hover = () => view.contentEl.dispatchEvent(new MouseEvent('mouseenter'));
+  gitWorkspaceEvents.get('active-leaf-change')(leaf);
+  enter(document.body);
+  hover();
+  await new Promise(resolve => setTimeout(resolve, 550));
+  const afterEntry = refreshes;
+  enter(view.commitButton);
+  view.commitButton.dispatchEvent(new MouseEvent('mouseenter'));
+  view.message.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 550));
+  const afterInternal = refreshes;
+  enter(document.body);
+  await new Promise(resolve => setTimeout(resolve, 550));
+  const afterReentry = refreshes;
+  hover();
+  await new Promise(resolve => setTimeout(resolve, 550));
+  plugin.refresh = refresh; plugin.pullFromRemote = remote;
+  return { afterEntry, afterInternal, afterReentry, afterHover: refreshes, pulls, gap: getComputedStyle(view.contentEl.querySelector('.luggit-header')).columnGap };
+}
+async function runRecentDiffTest() {
+  const queries = [], opened = [], results = [];
+  const copied = [], clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => copied.push(text) } });
+  const deleted = '기록/삭제된 메모.md';
+  gitPlugin.app.vault.getFileByPath = name => name === deleted ? null : { path: name };
+  gitPlugin.openFile = name => opened.push(name);
+  gitPlugin.git.recentDiff = async name => {
+    queries.push(name);
+    return { commit: '1234567890abcdef', diff: name === deleted
+      ? 'diff --git a/note.md b/note.md\ndeleted file mode 100644\n--- a/note.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-삭제된 기록\n'
+      : 'diff --git a/note.md b/note.md\n--- a/note.md\n+++ b/note.md\n@@ -1 +1 @@\n-이전 아이디어\n+바뀐 아이디어\n' };
+  };
+  const links = [...document.querySelectorAll('.luggit-recent')];
+  for (const link of [links[0], links[2]]) {
+    link.click();
+    for (let frame = 0; frame < 10 && !document.querySelector('.luggit-diff-modal'); frame++) await new Promise(resolve => requestAnimationFrame(resolve));
+    const modal = document.querySelector('.luggit-diff-modal');
+    const open = modal.querySelector('[aria-label="문서 열기"]');
+    const title = modal.querySelector('.luggit-diff-title');
+    const titleRect = title?.getBoundingClientRect();
+    const titleEdge = titleRect && document.elementFromPoint(titleRect.right - 2, titleRect.top + titleRect.height / 2);
+    for (const label of ['제목 복사 (경로 포함)', '변경 내용 복사']) {
+      modal.querySelector(`[aria-label="${label}"]`).click(); await Promise.resolve();
+    }
+    if (title) {
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+    }
+    results.push({ title: modal.querySelector('h3').textContent, label: modal.querySelector('.luggit-diff-label').textContent,
+      hasOpen: !!open, hasTitleAction: title?.getAttribute('role') === 'button', fullTitleRow: !!title && titleEdge === title,
+      openInFooter: !!open?.closest('.luggit-diff-actions'), summaryButtons: modal.querySelectorAll('.luggit-diff-summary button').length,
+      shortcutIgnored: modal.isConnected && opened.length === (title ? 0 : 1),
+      removed: modal.querySelectorAll('tr.is-removed').length, text: modal.textContent, openedBeforeClick: opened.length });
+    if (open) titleEdge.click(); else lastModal.close();
+  }
+  for (const key of ['Enter', ' ']) {
+    await gitPlugin.showRecentDiff('회의/제품 아이디어.md');
+    const title = document.querySelector('.luggit-diff-title');
+    title.focus(); title.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  }
+  if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else delete navigator.clipboard;
+  return { queries, opened, results, copied };
+}
+async function runConfirmationTest() {
+  const discarded = []; const plugin = gitPlugin;
+  plugin.git.status = async () => ({ repo: true, files: [{ path: 'test.md', index: ' ', work: 'M', unstaged: true }], ahead: 0 });
+  plugin.git.discard = async name => discarded.push(name);
+  let alignment = false, labels = [];
+  for (const key of ['Enter', ' ', 'Escape', 'cancel', 'repeat']) {
+    const operation = plugin.discard('test.md');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const modal = document.querySelector('.modal'), actions = modal.querySelector('.luggit-confirm-actions'), buttons = [...actions.querySelectorAll('button')];
+    labels = buttons.map(button => button.textContent);
+    alignment = getComputedStyle(actions).justifyContent === 'flex-end' && Math.abs(buttons[1].getBoundingClientRect().right - actions.getBoundingClientRect().right) < 2;
+    if (key === 'cancel') buttons[0].click();
+    else if (key === 'repeat') {
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, repeat: true }));
+      if (!document.querySelector('.modal')) throw new Error('Repeated key approved the modal');
+      buttons[0].click();
+    } else document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await operation;
+  }
+  window.previewConfirmation = plugin.discard('test.md');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  return { discarded, alignment, labels, focused: document.activeElement.textContent };
+}
+async function runDiffTest() {
+  document.body.style.userSelect = 'none'; // Match the host's otherwise non-selectable app UI.
+  gitPlugin.app.vault.getFileByPath = () => null;
+  gitPlugin.git.diff = async () => 'diff --git a/새 메모.md b/새 메모.md\nnew file mode 100644\nindex 0000000..1234567\n--- /dev/null\n+++ b/새 메모.md\n@@ -0,0 +1,5 @@\n+# 새로운 아이디어\n+\n+문서 패널에서 선택한 내용을 모읍니다.\n+오른쪽 패널에서 정리한 뒤 커밋합니다.\n+다음에 이어서 볼 메모를 남깁니다.\n';
+  await gitPlugin.showDiff('새 메모.md', true);
+  const modal = document.querySelector('.luggit-diff-modal');
+  const code = modal.querySelector('.luggit-diff-code'), range = document.createRange();
+  range.selectNodeContents(code);
+  const rect = range.getBoundingClientRect();
+  window.diffCopyEvents = [];
+  document.addEventListener('copy', event => {
+    diffCopyEvents.push(getSelection().toString()); event.preventDefault(); // Preserve the user's system clipboard during tests.
+  }, { once: true });
+  return { text: modal.textContent, rows: modal.querySelectorAll('tbody tr.is-added').length, headings: [...modal.querySelectorAll('th')].map(cell => cell.textContent),
+    userSelect: getComputedStyle(code).userSelect, expectedSelection: code.textContent,
+    start: { x: rect.left, y: rect.top + rect.height / 2 }, end: { x: rect.right, y: rect.top + rect.height / 2 } };
+}
+</script></body></html>

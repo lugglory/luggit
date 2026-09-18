@@ -1,0 +1,75 @@
+/* Obsidian shares one notice area; keep it clear of the sidebar toolbar. */
+body .notice-container { top: auto; bottom: max(36px, env(safe-area-inset-bottom)); max-height: 50vh; overflow-y: auto; }
+.luggit { padding: 12px; font-size: var(--font-ui-small); }
+.luggit-header, .luggit-section-header, .luggit-file { display: flex; align-items: center; gap: 8px; }
+.luggit-section-header { justify-content: space-between; }
+.luggit-header { justify-content: center; gap: 0; margin-bottom: 4px; flex-wrap: wrap; }
+.luggit-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.luggit-icon, .luggit .luggit-icon { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 5px 7px; min-width: 28px; height: 28px; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); }
+.luggit-icon span { display: inline-flex; pointer-events: none; }
+.luggit-icon svg { width: 16px; height: 16px; }
+.luggit-icon:not(:disabled):hover, .luggit .luggit-icon:not(:disabled):hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.luggit .luggit-icon.is-pending { color: var(--text-accent, var(--interactive-accent)); }
+.luggit .luggit-icon.is-pending:not(:disabled):hover { color: var(--text-accent, var(--interactive-accent)); background: var(--background-modifier-hover); }
+.luggit-icon:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.luggit-icon:disabled { opacity: 0.4; }
+.luggit .luggit-message { display: block; box-sizing: border-box; width: 100%; min-height: 0; height: auto; padding: 5px 8px; font: inherit; line-height: 1.4; resize: none; overflow: hidden; margin: 4px 0; }
+.luggit .luggit-header .luggit-icon { min-width: 32px; height: 30px; }
+.luggit-section { border: 0; padding: 0; margin-top: 6px; }
+.luggit-section-header { min-height: 28px; font-weight: 600; margin-inline: -2px; padding-inline: 2px; border-radius: 4px; }
+.luggit-section-header:hover, .luggit-section-header:focus-within { background: var(--background-modifier-hover); }
+.luggit-section-header .luggit-actions { gap: 0; margin-inline: -2px; }
+.luggit .luggit-section-header .luggit-icon { box-sizing: border-box; width: 28px; min-width: 28px; height: 28px; padding: 7px; }
+.luggit .luggit-section-toggle { display: flex; flex: 1; align-items: center; justify-content: flex-start; gap: 4px; min-width: 0; height: 28px; padding: 0; border: 0; border-radius: 4px; box-shadow: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.luggit .luggit-section-toggle:hover { background: transparent; }
+.luggit-section-header .luggit-icon:not(:disabled):hover { background: var(--background-modifier-border-hover, var(--background-modifier-border)); }
+.luggit-section-toggle:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.luggit-section-toggle > span:first-child { display: inline-flex; flex-shrink: 0; }
+.luggit-section-toggle svg { width: 12px; height: 12px; }
+.luggit-section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.luggit-list { padding-inline-start: 16px; }
+.luggit-list[hidden] { display: none; }
+.luggit-file { min-height: 24px; padding: 0; line-height: 1.4; cursor: pointer; border-radius: 4px; }
+.luggit-file:hover, .luggit-file:focus-within { background: var(--background-modifier-hover); }
+.luggit .luggit-file .luggit-icon { min-width: 24px; height: 24px; padding: 4px; background: transparent; border: 0; box-shadow: none; }
+.luggit-section-header .luggit-icon svg, .luggit-file .luggit-icon svg { width: 14px; height: 14px; }
+.luggit-file .luggit-icon:not(:disabled):hover { background: var(--background-modifier-border-hover, var(--background-modifier-border)); }
+.luggit-code { width: 16px; flex-shrink: 0; color: #778899; font-family: var(--font-monospace); font-weight: 600; }
+.luggit-code[data-status="M"] { color: #b98224; }
+.luggit-code[data-status="A"] { color: #339966; }
+.luggit-code[data-status="D"] { color: #db5555; }
+.luggit-code[data-status="R"] { color: #518ed4; }
+.luggit-code[data-status="C"] { color: #2a9eab; }
+.luggit-code[data-status="U"] { color: #bc6dce; }
+.luggit-code[data-status="T"] { color: #a47ac1; }
+.luggit-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-normal); text-decoration: none; cursor: pointer; }
+.luggit .luggit-path:hover, .luggit .luggit-path:focus { color: var(--text-normal); text-decoration: none; }
+.luggit-recent { display: block; min-height: 24px; box-sizing: border-box; padding: 2px 0; line-height: 1.4; overflow-wrap: anywhere; color: var(--text-muted); text-decoration: none; cursor: pointer; }
+.luggit .luggit-recent:hover, .luggit .luggit-recent:focus { color: var(--text-muted); text-decoration: none; background: var(--background-modifier-hover); border-radius: 4px; }
+.luggit-muted { color: var(--text-faint); padding: 2px 0; line-height: 1.4; }
+.luggit-diff-modal { display: flex; flex-direction: column; width: min(1040px, 92vw); max-height: 90vh; }
+.luggit-diff-modal .modal-title { flex-shrink: 0; overflow-wrap: anywhere; padding-inline-end: 28px; }
+.luggit-diff-modal .modal-content { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.luggit-diff-modal .luggit-diff-title { display: block; box-sizing: border-box; width: 100%; min-height: 40px; padding-block: 8px; color: inherit; cursor: pointer; border-radius: 4px; }
+.luggit-diff-title-text { border-radius: 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.luggit-diff-title:hover .luggit-diff-title-text { background: var(--background-modifier-hover); }
+.luggit-diff-title:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 3px; }
+.luggit-diff-actions { display: flex; flex-shrink: 0; justify-content: flex-end; gap: 8px; padding-top: 8px; }
+.luggit-diff-actions .luggit-icon { width: 32px; height: 32px; padding: 5px 7px; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); }
+.luggit-diff-summary { display: flex; flex-shrink: 0; align-items: center; flex-wrap: wrap; gap: 12px; padding: 4px 0 16px; font-size: var(--font-ui-small); }
+.luggit-diff-label { margin-right: auto; color: var(--text-muted); }
+.luggit-diff-added { color: var(--text-success, #62b981); }
+.luggit-diff-removed { color: var(--text-error, #e27878); }
+.luggit-diff-scroll { overflow: auto; min-height: 0; max-height: 65vh; border: 1px solid var(--background-modifier-border); border-radius: 8px; -webkit-user-select: text; user-select: text; }
+.luggit-diff-table { width: 100%; border-collapse: collapse; margin: 0; font-family: var(--font-monospace); font-size: var(--font-smaller); line-height: 1.65; tab-size: 4; }
+.luggit-diff-table th { position: sticky; top: 0; z-index: 1; text-align: left; font-family: var(--font-interface); font-size: var(--font-ui-smaller); font-weight: 500; color: var(--text-muted); background: var(--background-secondary, #292929); padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--background-modifier-border); user-select: none; }
+.luggit-diff-table td { border: 0; padding: 2px 12px; }
+.luggit-diff-table .luggit-diff-number { width: 1%; min-width: 48px; text-align: right; color: var(--text-faint); user-select: none; border-right: 1px solid var(--background-modifier-border); }
+.luggit-diff-table .luggit-diff-sign { width: 1%; padding: 2px 8px; user-select: none; }
+.luggit-diff-table .luggit-diff-code { white-space: pre; color: var(--text-normal); -webkit-user-select: text; user-select: text; cursor: text; }
+.luggit-diff-table .is-added { background: color-mix(in srgb, var(--color-green, #56b870) 12%, transparent); }
+.luggit-diff-table .is-removed { background: color-mix(in srgb, var(--color-red, #db6565) 12%, transparent); }
+.luggit-diff-table .is-added .luggit-diff-sign { color: var(--text-success, #62b981); }
+.luggit-diff-table .is-removed .luggit-diff-sign { color: var(--text-error, #e27878); }
+.luggit-diff-table .is-hunk td { padding: 8px 12px; font-family: var(--font-interface); font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-secondary, #292929); border-block: 1px solid var(--background-modifier-border); }
+.luggit-diff-empty { padding: 36px 16px; text-align: center; color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: 8px; }
