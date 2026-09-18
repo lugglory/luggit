@@ -18,6 +18,30 @@ function parseStatus(output) {
   return files;
 }
 
+// Porcelain v2 with --branch answers "which files, which branch, how far ahead" in one
+// process, and unlike the v1 branch line its headers are never translated.
+function parseStatusV2(output) {
+  const records = output.split('\0'), files = [], branch = { head: true, name: '', upstream: '', ahead: null };
+  const entry = (xy, path, originalPath = null) => {
+    const index = xy[0] === '.' ? ' ' : xy[0], work = xy[1] === '.' ? ' ' : xy[1];
+    files.push({ path, originalPath, index, work, staged: index !== ' ' && index !== '?', unstaged: work !== ' ' || index === '?' });
+  };
+  // Paths may contain spaces, so only the fixed number of leading fields is split off.
+  const pathAfter = (record, fields) => record.split(' ').slice(fields).join(' ');
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    if (record.startsWith('# branch.oid ')) branch.head = record.slice(13) !== '(initial)';
+    else if (record.startsWith('# branch.head ')) branch.name = record.slice(14) === '(detached)' ? 'HEAD' : record.slice(14);
+    else if (record.startsWith('# branch.upstream ')) branch.upstream = record.slice(18);
+    else if (record.startsWith('# branch.ab ')) branch.ahead = Number(/^\+(\d+)/.exec(record.slice(12))?.[1]) || 0;
+    else if (record.startsWith('1 ')) entry(record.slice(2, 4), pathAfter(record, 8));
+    else if (record.startsWith('2 ')) entry(record.slice(2, 4), pathAfter(record, 9), records[++i]);
+    else if (record.startsWith('u ')) entry(record.slice(2, 4), pathAfter(record, 10));
+    else if (record.startsWith('? ')) entry('??', record.slice(2));
+  }
+  return { files, branch };
+}
+
 function parseStats(output) {
   const records = output.split('\0'), stats = [];
   for (let i = 0; i < records.length; i++) {
@@ -112,17 +136,13 @@ class GitService {
   async status() {
     if (!(await this.isRepo())) return { repo: false, files: [], branch: '', ahead: 0 };
     // Background refreshes must not rewrite .git/index, or the folder watcher would retrigger them.
-    const files = parseStatus(await this.run(['--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all']));
-    const head = await this.hasHead();
-    const branch = head ? (await this.run(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() : '(커밋 없음)';
-    const remotes = (await this.run(['remote'])).trim();
-    let ahead = 0;
-    if (head && remotes) {
-      let upstream = '';
-      try { upstream = (await this.run(['rev-parse', '--symbolic-full-name', '@{upstream}'])).trim(); } catch { /* Branch may have no upstream. */ }
-      ahead = Number(await this.run(upstream ? ['rev-list', '--count', upstream + '..HEAD'] : ['rev-list', '--count', 'HEAD', '--not', '--remotes'])) || 0;
+    const { files, branch } = parseStatusV2(await this.run(['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']));
+    let ahead = branch.ahead ?? 0;
+    // Without a usable upstream, count the commits that no remote has yet.
+    if (branch.ahead === null && branch.head && (await this.run(['remote'])).trim()) {
+      ahead = Number(await this.run(['rev-list', '--count', 'HEAD', '--not', '--remotes'])) || 0;
     }
-    return { repo: true, files, branch, ahead };
+    return { repo: true, files, branch: branch.head ? branch.name : '(커밋 없음)', ahead, head: branch.head };
   }
   async init() {
     // Refuse inherited repositories here as well.
@@ -182,9 +202,10 @@ class GitService {
     await this.run(['commit', '-m', title]);
     return title;
   }
-  async recentFiles() {
-    await this.requireRepo();
-    if (!(await this.hasHead())) return [];
+  // Pass the head flag of a status() result to skip repeating its repository checks.
+  async recentFiles(head) {
+    if (head === undefined) { await this.requireRepo(); head = await this.hasHead(); }
+    if (!head) return [];
     const output = await this.run(['log', '--first-parent', '-n', '30', '--format=', '--name-only', '-z', '--no-renames', '--diff-filter=AMDT']);
     const recent = [];
     for (const name of new Set(output.split('\0').filter(Boolean))) {
@@ -220,4 +241,4 @@ class GitService {
     }
   }
 }
-module.exports = { GitService, parseStatus, parseStats };
+module.exports = { GitService, parseStatus, parseStatusV2, parseStats };

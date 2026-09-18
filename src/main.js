@@ -288,7 +288,7 @@ module.exports = class LuggitPlugin extends Plugin {
     }));
     this.app.workspace.onLayoutReady(() => {
       this.openPanel();
-      if (this.exitPushError) new Notice('지난 종료 Push: ' + this.exitPushError + '\nPush 버튼으로 다시 시도하세요.', 8000);
+      this.reportExitPush();
       if (this.settings.autoPull) this.perform('자동 Pull', async () => {
         const status = await this.git.status();
         if (status.repo && !status.files.length && (await this.git.run(['remote'])).trim()) await this.git.pull();
@@ -316,7 +316,7 @@ module.exports = class LuggitPlugin extends Plugin {
     const id = ++this.refreshId;
     try {
       const status = await this.git.status();
-      if (status.repo) status.recent = await this.git.recentFiles();
+      if (status.repo) status.recent = await this.git.recentFiles(status.head);
       if (id !== this.refreshId) return;
       if (status.repo) this.stopGitWatch ||= this.git.watch(() => this.scheduleRefresh(), this.app.vault.configDir);
       this.lastRefreshError = ''; this.snapshot = status; this.render();
@@ -356,6 +356,16 @@ module.exports = class LuggitPlugin extends Plugin {
     this.exitPushError = message;
     try { this.exitState.write(message); }
     catch (error) { new Notice('종료 Push 상태를 로컬에 저장하지 못했습니다: ' + error.message, 6000); }
+  }
+  // The window closes right after an exit push, so clearing the marker may never
+  // reach the disk. Trust the repository instead: nothing waiting means it was pushed.
+  async reportExitPush() {
+    if (!this.exitPushError) return;
+    try {
+      const status = await this.git.status();
+      if (status.repo && !status.ahead) { this.recordExitPushError(''); return; }
+    } catch { /* Report the stored failure below. */ }
+    new Notice('지난 종료 Push: ' + this.exitPushError + '\nPush 버튼으로 다시 시도하세요.', 8000);
   }
   async pushOnExit() {
     try {

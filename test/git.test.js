@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { GitService, parseStatus, parseStats } = require('../src/git-service');
+const { GitService, parseStatus, parseStatusV2, parseStats } = require('../src/git-service');
 
 async function repository(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'luggit-test-git-'));
@@ -161,4 +161,21 @@ test('watching .git and the config folder reports what Obsidian never does', asy
   await repo.write('.obsidian/plugins/sample/main.js', 'changed');
   for (let i = 0; i < 40 && !changes; i++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.ok(changes > 0, 'Hidden configuration that Obsidian never reports is detected');
+});
+
+test('porcelain v2 parser matches the v1 file shape and reads untranslated branch headers', async t => {
+  const parsed = parseStatusV2('# branch.oid abc\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +3 -1\0' +
+    '1 .M N... 100644 100644 100644 a b 한 글 노트.md\0002 R. N... 100644 100644 100644 a b R100 new name.md\0old name.md\0' +
+    'u UU N... 100644 100644 100644 100644 a b c conflict.md\0? new file.md\0');
+  assert.deepEqual(parsed.branch, { head: true, name: 'main', upstream: 'origin/main', ahead: 3 });
+  assert.deepEqual(parsed.files.map(file => [file.path, file.originalPath, file.index, file.work, file.staged, file.unstaged]), [
+    ['한 글 노트.md', null, ' ', 'M', false, true], ['new name.md', 'old name.md', 'R', ' ', true, false],
+    ['conflict.md', null, 'U', 'U', true, true], ['new file.md', null, '?', '?', false, true]]);
+  assert.deepEqual(parseStatusV2('# branch.oid (initial)\0# branch.head main\0').branch, { head: false, name: 'main', upstream: '', ahead: null });
+  const repo = await repository(t);
+  await repo.write('a b.md', 'one\n'); await repo.write('staged.md', 'x'); await repo.git.stage('staged.md');
+  const legacy = parseStatus(await repo.git.run(['status', '--porcelain=v1', '-z', '--untracked-files=all']));
+  const sort = files => files.slice().sort((a, b) => a.path.localeCompare(b.path));
+  assert.deepEqual(sort((await repo.git.status()).files), sort(legacy));
+  assert.equal((await repo.git.status()).head, false);
 });

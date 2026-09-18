@@ -128,3 +128,15 @@ test('background refresh stays local and never runs Pull', async () => {
   await Object.getPrototypeOf(p).refresh.call(p);
   assert.equal(p.snapshot.repo, true);
 });
+
+test('a stale exit push marker is cleared silently when nothing is waiting to be pushed', async () => {
+  const { plugin: p, notices } = plugin();
+  p.exitPushError = 'Push 완료를 확인하지 못했습니다.';
+  p.git = { status: async () => ({ repo: true, ahead: 0 }) };
+  await p.reportExitPush();
+  assert.deepEqual(notices, []); assert.equal(p.exitPushError, ''); assert.equal(p.exitState.message, '');
+  p.exitPushError = 'offline';
+  p.git = { status: async () => ({ repo: true, ahead: 2 }) };
+  await p.reportExitPush();
+  assert.match(notices[0], /지난 종료 Push: offline/); assert.equal(p.exitPushError, 'offline');
+});
