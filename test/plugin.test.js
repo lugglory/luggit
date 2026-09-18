@@ -123,7 +123,7 @@ test('failed manual Pull reports the error and still refreshes the local panel',
 
 test('background refresh stays local and never runs Pull', async () => {
   const { plugin: p } = plugin();
-  p.git = { status: async () => ({ repo: true, files: [] }), recentFiles: async () => [],
+  p.git = { status: async () => ({ repo: true, files: [] }), recentFiles: async () => [], watch: () => null,
     run() { assert.fail('background refresh must not query remotes'); }, pull() { assert.fail('background refresh must not pull'); } };
   await Object.getPrototypeOf(p).refresh.call(p);
   assert.equal(p.snapshot.repo, true);

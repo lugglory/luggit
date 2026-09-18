@@ -149,3 +149,18 @@ test('exit push sends existing commits and never stages or commits working chang
   assert.equal((await repo.git.status()).files[0].unstaged, true);
   assert.equal((await repo.git.run(['rev-list', '--count', 'HEAD'])).trim(), '1');
 });
+
+test('watching .git reports Git commands run outside the plugin', async t => {
+  const repo = await repository(t);
+  await repo.write('note.md', 'one\n'); await repo.git.commit('initial');
+  let changes = 0;
+  const stop = repo.git.watch(() => changes++);
+  t.after(stop);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  await repo.git.status();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(changes, 0, 'A background status refresh does not retrigger itself');
+  await repo.git.run(['commit', '--allow-empty', '-m', 'outside']);
+  for (let i = 0; i < 40 && !changes; i++) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.ok(changes > 0);
+});

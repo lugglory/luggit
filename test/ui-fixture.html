@@ -77,6 +77,7 @@ async function runTest() {
       { path: '오늘의 메모.md', index: ' ', work: 'M', unstaged: true },
       { path: '아주 긴 폴더 이름/오른쪽 문서 패널에 보낼 내용.md', index: '?', work: '?', unstaged: true },
     ] }; },
+    watch() { return null; },
     async recentFiles() { return ['회의/제품 아이디어.md', '리서치/읽을거리.md', '기록/삭제된 메모.md']; },
     async commit(message) { calls.push('commit:' + message); }, async push() { calls.push('push'); },
   };
@@ -162,7 +163,6 @@ async function runPanelFocusTest() {
   plugin.pullFromRemote = async () => { pulls++; };
   const enter = relatedTarget => view.message.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget }));
   const hover = () => view.contentEl.dispatchEvent(new MouseEvent('mouseenter'));
-  gitWorkspaceEvents.get('active-leaf-change')(leaf);
   enter(document.body);
   hover();
   await new Promise(resolve => setTimeout(resolve, 550));
@@ -172,13 +172,10 @@ async function runPanelFocusTest() {
   view.message.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
   await new Promise(resolve => setTimeout(resolve, 550));
   const afterInternal = refreshes;
-  enter(document.body);
-  await new Promise(resolve => setTimeout(resolve, 550));
-  const afterReentry = refreshes;
-  hover();
+  plugin.scheduleRefresh(); plugin.scheduleRefresh();
   await new Promise(resolve => setTimeout(resolve, 550));
   plugin.refresh = refresh; plugin.pullFromRemote = remote;
-  return { afterEntry, afterInternal, afterReentry, afterHover: refreshes, pulls, gap: getComputedStyle(view.contentEl.querySelector('.luggit-header')).columnGap };
+  return { afterEntry, afterInternal, afterFileChanges: refreshes, pulls, gap: getComputedStyle(view.contentEl.querySelector('.luggit-header')).columnGap };
 }
 async function runRecentDiffTest() {
   const queries = [], opened = [], results = [];

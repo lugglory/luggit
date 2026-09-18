@@ -35,7 +35,7 @@ app.whenReady().then(async () => {
     assert.deepEqual(result.sectionActions, [['모두 스테이지 해제'], ['모두 버리기', '모두 스테이지']], 'Section actions remain available alongside the top toolbar');
     assert.deepEqual(result.topActions, ['커밋 후 Push', '커밋', '모두 스테이지', '모두 스테이지 해제', 'Push · 대기 커밋 2개', 'Pull · 원격 변경 가져오기']);
     assert.equal(result.toolbarNamedWithoutTooltip, true, 'Toolbar retains its accessible name without a Git 작업 tooltip');
-    assert.equal(result.refreshClicks, 1, 'Refresh button calls the remote refresh action');
+    assert.equal(result.refreshClicks, 1, 'Pull button calls the remote refresh action');
     assert.equal(result.topActions.includes('모두 버리기'), false, 'Discard is absent from the top toolbar');
     assert.deepEqual(result.notices, ['커밋 후 Push 중…', '커밋 후 Push 완료'], 'Progress and result use notifications');
     win.webContents.debugger.attach('1.3');
@@ -101,7 +101,7 @@ app.whenReady().then(async () => {
     assert.equal(sections.headerCoversActions, true, 'Section highlight extends across the widened action buttons');
     assert.equal(sections.childIndent, 16, 'Child rows use a shallow indentation');
     const focus = await win.webContents.executeJavaScript('runPanelFocusTest()', true);
-    assert.deepEqual(focus, { afterEntry: 1, afterInternal: 1, afterReentry: 2, afterHover: 3, pulls: 0, gap: '0px' }, 'Mouse and focus entry coalesce into local refreshes; internal pointer/focus movement does not refresh; toolbar gaps are removed');
+    assert.deepEqual(focus, { afterEntry: 0, afterInternal: 0, afterFileChanges: 1, pulls: 0, gap: '0px' }, 'Pointer and focus movement never refresh; file change requests coalesce into one local refresh; toolbar gaps are removed');
     const recent = await win.webContents.executeJavaScript('runRecentDiffTest()', true);
     assert.deepEqual(recent.queries, ['회의/제품 아이디어.md', '기록/삭제된 메모.md', '회의/제품 아이디어.md', '회의/제품 아이디어.md'], 'Recent diffs are requested only on demand');
     assert.deepEqual(recent.opened, Array(3).fill('회의/제품 아이디어.md'), 'Existing files open from the title row with a click, Enter, or Space');
@@ -152,12 +152,15 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`
       window.exitPrompts = [];
       gitPlugin.git.statusForExit = () => ({ repo: true, files: [{ path: 'not-committed.md' }], unsaved: [] });
-      window.confirm = message => { exitPrompts.push(message); return false; }; void 0;
+      window.exitAnswer = 1;
+      // window.confirm is blocked by Chromium during beforeunload; the plugin must not rely on it.
+      window.confirm = () => { throw new Error('window.confirm must not be used during beforeunload'); };
+      window.electron = { remote: { dialog: { showMessageBoxSync: options => { exitPrompts.push(options.message); return exitAnswer; } } } }; void 0;
     `);
     win.close(); await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(win.isDestroyed(), false, 'Cancelling the exit warning keeps the window open');
     assert.match(await win.webContents.executeJavaScript('exitPrompts[0]'), /커밋하지 않은 변경사항/);
-    await win.webContents.executeJavaScript('window.confirm = () => true; void 0');
+    await win.webContents.executeJavaScript('window.exitAnswer = 0; void 0');
     await new Promise(resolve => { win.once('closed', resolve); win.close(); });
     console.log('Exit UI passed: native beforeunload cancellation and approved closing.');
     clearTimeout(deadline); app.exit(0);

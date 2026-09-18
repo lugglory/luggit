@@ -2,10 +2,12 @@
   "name": "luggit",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test test/*.test.js",
-    "test:ui": "node test/ui-run.cjs"
+    "test:ui": "node test/ui-run.cjs",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
   "devDependencies": {
     "electron": "44.3.0",

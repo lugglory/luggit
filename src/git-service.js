@@ -83,6 +83,23 @@ class GitService {
     }
     return { repo: true, files, unsaved: [...new Set(unsaved)] };
   }
+  // Vault events do not cover Git commands run outside Obsidian (commit, fetch,
+  // checkout), which only touch .git. Returns a closer, or null without a repository.
+  watch(onChange) {
+    // libuv aborts the whole process when a Windows 8.3 short path (USERNA~1) is
+    // watched, so always resolve to the long path first.
+    let dir;
+    try { dir = syncFs.realpathSync.native(path.join(this.root, '.git')); } catch { return null; }
+    // Object writes always come with an index or ref change; skip them and lock files.
+    const listener = (_type, name) => { if (!/^objects([\\/]|$)|\.lock$/.test(String(name || ''))) onChange(); };
+    let watcher;
+    try { watcher = syncFs.watch(dir, { recursive: true }, listener); }
+    catch {
+      try { watcher = syncFs.watch(dir, listener); } catch { return null; }
+    }
+    watcher.on('error', () => watcher.close());
+    return () => watcher.close();
+  }
   async pushOnExit() {
     if (!(await this.isRepo())) return false;
     return pushOnExit((args, options) => this.run(args, options));
@@ -112,7 +129,8 @@ class GitService {
   }
   async status() {
     if (!(await this.isRepo())) return { repo: false, files: [], branch: '', ahead: 0 };
-    const files = parseStatus(await this.run(['status', '--porcelain=v1', '-z', '--untracked-files=all']));
+    // Background refreshes must not rewrite .git/index, or the .git watcher would retrigger them.
+    const files = parseStatus(await this.run(['--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all']));
     const head = await this.hasHead();
     const branch = head ? (await this.run(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() : '(커밋 없음)';
     const remotes = (await this.run(['remote'])).trim();

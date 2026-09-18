@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { exitWarning, guardExit } = require('../src/exit-guard');
+const { exitWarning, guardExit, nativeConfirm, installExitGuard } = require('../src/exit-guard');
 
 test('exit warning includes staged, unstaged and not-yet-saved editor changes once', () => {
   const message = exitWarning({ repo: true, files: [{ path: 'a.md' }, { path: 'b.md' }], unsaved: ['b.md', 'c.md'] });
@@ -24,4 +24,32 @@ test('busy Git operations and inspection errors prompt instead of silently closi
     assert.match(message, busy ? /진행 중/ : /확인하지 못했습니다/);
     assert.equal(event.prevented, true);
   }
+});
+
+test('native confirm never blocks the exit when no synchronous dialog is available', () => {
+  assert.equal(nativeConfirm({}, 'x'), true);
+  const seen = [];
+  const win = answer => ({ electronWindow: 'owner', electron: { remote: { dialog: { showMessageBoxSync: (owner, options) => { seen.push([owner, options.cancelId]); return answer; } } } } });
+  assert.equal(nativeConfirm(win(0), 'x'), true);
+  assert.equal(nativeConfirm(win(1), 'x'), false);
+  assert.deepEqual(seen, [['owner', 1], ['owner', 1]]);
+});
+
+test('exit guard wraps the host hook: cancel keeps it armed, approval runs it once, uninstall restores it', () => {
+  const calls = [];
+  const win = { onbeforeunload() { calls.push('host'); win.onbeforeunload = null; } };
+  const host = win.onbeforeunload;
+  let block = true;
+  const uninstall = installExitGuard(win, () => { calls.push('guard'); return block; });
+  win.onbeforeunload({});
+  assert.deepEqual(calls, ['guard'], 'A cancelled exit never fires the one-shot host quit hook');
+  block = false;
+  win.onbeforeunload({});
+  assert.deepEqual(calls, ['guard', 'guard', 'host']);
+  assert.equal(win.onbeforeunload, null, 'The host re-close after its quit tasks is not asked again');
+  uninstall();
+  assert.equal(win.onbeforeunload, null);
+  const other = { onbeforeunload: host };
+  installExitGuard(other, () => true)();
+  assert.equal(other.onbeforeunload, host);
 });

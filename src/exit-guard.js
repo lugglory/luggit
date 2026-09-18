@@ -18,5 +18,32 @@ function guardExit(event, { busy, inspect, confirm, report }) {
   let accepted = false;
   try { accepted = confirm(message); } catch (error) { report(error); }
   if (!accepted) { event.preventDefault(); event.returnValue = false; }
+  return !accepted;
 }
-module.exports = { exitWarning, guardExit };
+
+// Chromium blocks window.confirm during beforeunload: it returns false without
+// showing anything, which would keep the window open forever. Electron's native
+// message box is synchronous and still works there. Without it, never block.
+function nativeConfirm(win, message) {
+  const remote = win.electron?.remote;
+  if (!remote?.dialog?.showMessageBoxSync) return true;
+  const options = { type: 'warning', title: 'Luggit', message, buttons: ['닫기', '취소'], defaultId: 1, cancelId: 1, noLink: true };
+  const owner = win.electronWindow;
+  return (owner ? remote.dialog.showMessageBoxSync(owner, options) : remote.dialog.showMessageBoxSync(options)) === 0;
+}
+
+// Obsidian's own onbeforeunload hook fires the one-shot 'quit' event and then
+// disarms itself. Listeners cannot run ahead of it, so wrap it: a cancelled exit
+// leaves the host hook armed, and an approved one is not asked again when the
+// host re-closes the window after its quit tasks. Returns the uninstaller.
+function installExitGuard(win, guard) {
+  const host = win.onbeforeunload;
+  let active = true;
+  const wrapped = function (event) {
+    if (active && guard(event)) return;
+    return host?.call(this, event);
+  };
+  win.onbeforeunload = wrapped;
+  return () => { active = false; if (win.onbeforeunload === wrapped) win.onbeforeunload = host; };
+}
+module.exports = { exitWarning, guardExit, nativeConfirm, installExitGuard };

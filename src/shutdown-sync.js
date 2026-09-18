@@ -20,7 +20,10 @@ async function pushOnExit(git, timeoutMs = 15000) {
   catch (error) {
     if (!/no upstream|has no upstream|set-upstream/i.test(error.message)) throw error;
     const branch = (await run(['symbolic-ref', '--short', 'HEAD'])).trim();
-    await run(['push', '-u', 'origin', branch]);
+    const remotes = (await run(['remote'])).trim().split('\n').filter(Boolean);
+    const remote = remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : null;
+    if (!remote) throw new Error('원격 저장소와 upstream을 먼저 설정해 주세요.');
+    await run(['push', '-u', remote, branch]);
   }
   return true;
 }

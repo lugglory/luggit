@@ -1,1 +1,3 @@
 node_modules/
+# Build output; attached to GitHub releases instead.
+/main.js

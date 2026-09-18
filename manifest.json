@@ -3,7 +3,8 @@
   "name": "Luggit",
   "version": "0.1.0",
   "minAppVersion": "1.7.2",
-  "description": "보관함의 Git 변경사항, diff, 스테이지, 커밋과 원격 동기화를 관리합니다.",
-  "author": "Revision",
+  "description": "Review, stage, commit, push and pull your vault's Git changes from a sidebar panel.",
+  "author": "lugglory",
+  "authorUrl": "https://github.com/lugglory",
   "isDesktopOnly": true
 }

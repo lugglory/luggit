@@ -2,7 +2,7 @@
 const { Plugin, ItemView, MarkdownView, TextFileView, Modal, Notice, PluginSettingTab, Setting, FileSystemAdapter, addIcon, setIcon, setTooltip } = require('obsidian');
 const { GitService } = require('./git-service');
 const { confirmAction } = require('./confirmation');
-const { guardExit } = require('./exit-guard');
+const { guardExit, nativeConfirm, installExitGuard } = require('./exit-guard');
 const { ExitPushState } = require('./exit-state');
 const { parseDiff, copyableDiff } = require('./diff');
 const VIEW = 'luggit-changes';
@@ -139,17 +139,9 @@ class GitView extends ItemView {
       ['plus', '모두 스테이지', () => this.plugin.perform('스테이지', () => this.plugin.git.stage())],
     ]);
     this.recent = this.section('최근 변경한 파일', []);
-    this.focusHandler = event => {
-      if (!this.contentEl.contains(event.relatedTarget)) this.plugin.scheduleRefresh();
-    };
-    this.contentEl.addEventListener('focusin', this.focusHandler);
-    this.mouseEnterHandler = () => this.plugin.scheduleRefresh();
-    this.contentEl.addEventListener('mouseenter', this.mouseEnterHandler);
     await this.plugin.refresh();
   }
   onClose() {
-    this.contentEl.removeEventListener('focusin', this.focusHandler);
-    this.contentEl.removeEventListener('mouseenter', this.mouseEnterHandler);
     this.messageObserver?.disconnect();
     this.message?.ownerDocument.defaultView.cancelAnimationFrame(this.messageResizeFrame);
   }
@@ -288,24 +280,22 @@ module.exports = class LuggitPlugin extends Plugin {
     this.addCommand({ id: 'commit-and-push', name: '커밋 후 Push', callback: () => this.commit(true) });
     this.addCommand({ id: 'pull', name: 'Pull', callback: () => this.pullFromRemote() });
     this.addCommand({ id: 'push', name: 'Push', callback: () => this.perform('Push', () => this.push()) });
+    this.addCommand({ id: 'refresh', name: '변경사항 새로고침', callback: () => this.refresh(false, true) });
     this.addSettingTab(new GitSettings(this.app, this));
     for (const name of ['modify', 'create', 'delete', 'rename']) this.registerEvent(this.app.vault.on(name, () => this.scheduleRefresh()));
-    this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => {
-      if (leaf?.view.getViewType() === VIEW) this.scheduleRefresh();
-    }));
-    this.registerInterval(window.setInterval(() => this.refresh(), 15000));
     this.register(() => window.clearTimeout(this.refreshTimer));
+    this.register(() => this.stopGitWatch?.());
     this.register(() => this.progressNotice?.hide());
-    this.registerDomEvent(window, 'beforeunload', event => {
-      if (!this.settings.warnOnExit) return;
-      guardExit(event, { busy: this.busy, inspect: () => {
+    this.register(installExitGuard(window, event => {
+      if (!this.settings.warnOnExit) return false;
+      return guardExit(event, { busy: this.busy, inspect: () => {
         const editors = [];
         this.app.workspace.iterateAllLeaves(leaf => {
           if (leaf.view instanceof TextFileView && leaf.view.file) editors.push({ path: leaf.view.file.path, content: leaf.view.getViewData() });
         });
         return this.git.statusForExit(editors);
-      }, confirm: message => window.confirm(message), report: error => this.fail(error) });
-    });
+      }, confirm: message => nativeConfirm(window, message), report: error => this.fail(error) });
+    }));
     this.registerEvent(this.app.workspace.on('quit', tasks => {
       if (!this.settings.autoPushOnExit || this.busy) return;
       tasks.add(() => this.pushOnExit());
@@ -342,6 +332,7 @@ module.exports = class LuggitPlugin extends Plugin {
       const status = await this.git.status();
       if (status.repo) status.recent = await this.git.recentFiles();
       if (id !== this.refreshId) return;
+      if (status.repo) this.stopGitWatch ||= this.git.watch(() => this.scheduleRefresh());
       this.lastRefreshError = ''; this.snapshot = status; this.render();
       if (notify) new Notice('변경사항을 새로고침했습니다.', 1500);
     } catch (error) {
