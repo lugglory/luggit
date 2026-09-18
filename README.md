@@ -1,5 +1,81 @@
 # Luggit
 
+A Git changes panel for the Obsidian right sidebar: review diffs, stage, commit, push and pull your vault without leaving the app. Every action is an icon button, including a combined **Commit and push** button.
+
+Desktop only. Requires Obsidian 1.7.2 or later and a working [Git](https://git-scm.com/downloads) installation. The vault folder itself must be the root of the Git repository; a repository in a parent folder is refused on purpose.
+
+Luggit is an independent plugin. It is not an official Git Project product and is not affiliated with or endorsed by the Git Project. See [NOTICE.md](NOTICE.md) for the Git logo's source, license and trademark notice.
+
+[한국어 설명은 아래에 있습니다.](#한국어)
+
+## Installation
+
+### From the community plugin directory
+
+1. Open **Settings → Community plugins** and turn off Restricted mode if needed.
+2. Select **Browse**, search for **Luggit**, then select **Install** and **Enable**.
+
+### Manually
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/lugglory/luggit/releases/latest).
+2. Copy them into `<your vault>/.obsidian/plugins/luggit/`.
+3. Restart Obsidian and enable **Luggit** under **Settings → Community plugins**.
+
+Release assets are built by GitHub Actions and carry [artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds). Verify a download with `gh attestation verify main.js --repo lugglory/luggit`.
+
+## Usage
+
+Enabling the plugin opens the **Git changes** panel in the right sidebar. Reopen it any time from the ribbon icon or with the command **Luggit: Git 변경사항 패널 열기** (open the Git changes panel). The interface is currently in Korean; every button has a tooltip and an accessible name.
+
+1. If the vault is not a repository yet, select the **create repository** button in the panel. Remotes, authentication, branches and your author name and email are set up with your usual Git tools.
+2. The toolbar at the top holds, in order: **Commit and push**, **Commit**, **Stage all**, **Unstage all**, **Push**, **Pull**. Icons are highlighted when there is something to commit or push.
+3. Below the commit message box, the **Staged**, **Changed** and **Recently changed files** sections list files by name (hover for the full path). Select a section title to collapse it.
+4. Select a file to open its diff with old and new line numbers. From the diff you can copy the path, copy the changes, or open the note for editing.
+5. Each file row has icon buttons to stage, unstage or discard. Discarding asks for confirmation; tracked files return to their indexed content and untracked files go to the trash.
+6. Type a commit message and press `Ctrl+Enter` (`Cmd+Enter` on macOS), or use the toolbar. With nothing staged, a commit stages everything first. An empty message is filled in with the name of the most changed file.
+7. Pull is fast-forward only and runs only when there are no uncommitted changes. Resolve merge conflicts in an external Git tool.
+
+Open notes are saved before every Git action, and only one Git action runs at a time. The lists refresh automatically when vault files change and when the `.git` folder changes, for example after a commit from a terminal. A **변경사항 새로고침** (refresh) command is available as a fallback. All commands can be given hotkeys under **Settings → Hotkeys**.
+
+### Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Pull on startup | On | Fast-forward pull when a remote exists and the vault has no changes. |
+| Warn about uncommitted changes before exit | On | Shows a native confirmation before the window closes or reloads. |
+| Push on exit | On | Pushes existing commits for up to 15 seconds. Never stages or commits. A failure is reported on the next start. |
+| Git executable | `git` | Name or absolute path of the Git executable. |
+
+While the plugin is enabled, Obsidian's shared notice area moves to the bottom right so notices do not cover the panel toolbar. This also applies to notices from other plugins.
+
+## Permissions and disclosures
+
+- **Shell execution (`child_process`)**: the plugin works by running your installed `git` executable, always with an argument list and never through a shell. It runs no other program. The working directory is always the vault root.
+- **Direct filesystem access (`fs`)**: used only inside the vault folder, to check that the vault is the repository root, to preview untracked files in the diff view, to compare open editors with the saved files before exit, and to watch the `.git` folder for changes. Nothing outside the vault is read or written.
+- **Network**: the plugin makes no network requests of its own. `git pull` and `git push` contact the remotes you configured. No telemetry.
+- **Clipboard**: written only when you select a copy button in the diff view. Never read.
+- **Local storage**: the result of the last push on exit is kept per device, outside the vault, so that notices never modify `data.json`.
+- **Exit handling**: to ask before closing, the plugin wraps Obsidian's `onbeforeunload` hook while enabled and restores it when disabled. Forced quits cannot be intercepted.
+
+## Development
+
+```sh
+npm ci
+npm run build
+npm test
+npm run test:ui
+```
+
+`npm run test:ui` drives the panel in a hidden Electron window. To release, run `npm version patch` (or `minor` / `major`) and `git push --follow-tags`; GitHub Actions builds, tests, attests and publishes the release.
+
+## License
+
+[MIT](LICENSE). The Git logo is covered by separate terms; see [NOTICE.md](NOTICE.md).
+
+---
+
+## 한국어
+
 Revision의 Git 패널을 Obsidian 오른쪽 사이드바에서 사용하는 독립 플러그인입니다. 버튼은 아이콘으로만 표시하며, 커밋 아이콘과 Push 아이콘을 합친 **커밋 후 Push** 버튼을 포함합니다.
 
 Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타내는 공식 로고의 [출처·라이선스·상표 안내](NOTICE.md)를 확인하세요.
@@ -8,7 +84,7 @@ Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타�
 
 데스크톱 Obsidian 1.7.2 이상과 Git이 필요합니다.
 
-## 설치
+### 설치
 
 1. 원하는 보관함의 `.obsidian/plugins/` 안에 `luggit` 폴더를 만듭니다.
 2. [최신 릴리즈](https://github.com/lugglory/luggit/releases/latest)에서 `manifest.json`, `main.js`, `styles.css`를 받아 넣습니다. 직접 빌드하려면 `npm ci && npm run build` 후 같은 세 파일을 복사합니다.
@@ -21,7 +97,7 @@ Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타�
 └── styles.css
 ```
 
-## 사용법
+### 사용법
 
 켜면 오른쪽 사이드바에 Git 변경사항 패널이 열립니다. 리본의 Git 공식 로고 아이콘이나 `Luggit: Git 변경사항 패널 열기` 명령으로 다시 열 수 있습니다. 패널 탭에도 같은 아이콘을 사용합니다. Git 기능을 나타내는 로고이며 이 플러그인은 Git 프로젝트의 공식·제휴 제품이 아닙니다. [로고 출처와 라이선스·상표 안내](NOTICE.md).
 
@@ -52,7 +128,7 @@ Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타�
 - **종료 처리의 한계:** Obsidian의 `quit` 이벤트는 실행이 보장되지 않으며, 호스트가 `beforeunload` 취소를 무시하거나 강제 종료되면 플러그인이 막을 수 없습니다. 실제 설치 환경에서 확인이 필요합니다. 모바일 강제 종료 경고는 지원하지 않습니다. Git 실행 파일 경로도 설정에서 지정할 수 있습니다.
 - 보관함 자체가 저장소 루트여야 합니다. 상위 폴더의 저장소를 잘못 조작하지 않도록 상위 저장소는 거부합니다. 변경사항은 보관함 전체가 대상이므로 `.obsidian`, `.trash` 등 제외할 경로는 보관함의 `.gitignore`에 직접 지정하세요.
 
-## 개발 및 검증
+### 개발 및 검증
 
 이 폴더에서 실행합니다. 다른 폴더의 파일은 필요 없습니다.
 
@@ -69,7 +145,7 @@ npm run test:ui
 
 API 참고: [Obsidian 공식 API](https://github.com/obsidianmd/obsidian-api), [플러그인 개발 안내](https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin).
 
-## 릴리즈
+### 릴리즈
 
 ```sh
 npm version patch   # 또는 minor / major. package.json, manifest.json, versions.json을 함께 올리고 태그를 만듭니다.
@@ -78,6 +154,6 @@ git push --follow-tags
 
 `v` 접두사 없는 버전 태그(예: `0.1.1`)가 올라가면 GitHub Actions가 빌드·테스트 후 `main.js`, `manifest.json`, `styles.css`를 첨부한 릴리즈를 만듭니다. 태그와 `manifest.json`의 버전이 다르면 실패합니다.
 
-## 라이선스
+### 라이선스
 
 [MIT](LICENSE). Git 로고는 별도 조건을 따릅니다([NOTICE.md](NOTICE.md)).
