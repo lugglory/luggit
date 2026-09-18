@@ -2,7 +2,6 @@
 const { Plugin, ItemView, MarkdownView, TextFileView, Modal, Notice, PluginSettingTab, Setting, FileSystemAdapter, addIcon, setIcon, setTooltip } = require('obsidian');
 const { GitService } = require('./git-service');
 const { confirmAction } = require('./confirmation');
-const { guardExit, nativeConfirm, installExitGuard } = require('./exit-guard');
 const { ExitPushState } = require('./exit-state');
 const { parseDiff, copyableDiff } = require('./diff');
 const VIEW = 'luggit-changes';
@@ -240,9 +239,6 @@ class GitSettings extends PluginSettingTab {
     new Setting(this.containerEl).setName('시작할 때 Pull').setDesc('원격 저장소가 있고 보관함에 변경사항이 없을 때만 가져옵니다.').addToggle(toggle => toggle.setValue(this.plugin.settings.autoPull).onChange(async value => {
       this.plugin.settings.autoPull = value; await this.plugin.saveData(this.plugin.settings);
     }));
-    new Setting(this.containerEl).setName('종료 전 미커밋 변경 경고').setDesc('창 닫기·새로고침 전에 로컬 변경사항을 확인합니다. 강제 종료는 감지할 수 없습니다.').addToggle(toggle => toggle.setValue(this.plugin.settings.warnOnExit).onChange(async value => {
-      this.plugin.settings.warnOnExit = value; await this.plugin.saveData(this.plugin.settings);
-    }));
     new Setting(this.containerEl).setName('종료할 때 Push').setDesc('이미 만들어 둔 커밋만 최대 15초 동안 Push합니다. Obsidian의 종료 이벤트가 생략되면 실행되지 않을 수 있습니다.').addToggle(toggle => toggle.setValue(this.plugin.settings.autoPushOnExit).onChange(async value => {
       this.plugin.settings.autoPushOnExit = value; await this.plugin.saveData(this.plugin.settings);
     }));
@@ -256,7 +252,7 @@ module.exports = class LuggitPlugin extends Plugin {
   async onload() {
     if (!(this.app.vault.adapter instanceof FileSystemAdapter)) { new Notice('Luggit은 데스크톱 보관함에서 사용할 수 있습니다.'); return; }
     registerIcons();
-    this.settings = Object.assign({ autoPull: true, autoPushOnExit: true, warnOnExit: true, executable: 'git' }, await this.loadData());
+    this.settings = Object.assign({ autoPull: true, autoPushOnExit: true, executable: 'git' }, await this.loadData());
     this.draft = ''; this.busy = false; this.lastRefreshError = ''; this.refreshId = 0;
     const adapter = this.app.vault.adapter;
     this.exitPushError = '';
@@ -286,16 +282,6 @@ module.exports = class LuggitPlugin extends Plugin {
     this.register(() => window.clearTimeout(this.refreshTimer));
     this.register(() => this.stopGitWatch?.());
     this.register(() => this.progressNotice?.hide());
-    this.register(installExitGuard(window, event => {
-      if (!this.settings.warnOnExit) return false;
-      return guardExit(event, { busy: this.busy, inspect: () => {
-        const editors = [];
-        this.app.workspace.iterateAllLeaves(leaf => {
-          if (leaf.view instanceof TextFileView && leaf.view.file) editors.push({ path: leaf.view.file.path, content: leaf.view.getViewData() });
-        });
-        return this.git.statusForExit(editors);
-      }, confirm: message => nativeConfirm(window, message), report: error => this.fail(error) });
-    }));
     this.registerEvent(this.app.workspace.on('quit', tasks => {
       if (!this.settings.autoPushOnExit || this.busy) return;
       tasks.add(() => this.pushOnExit());
@@ -332,7 +318,7 @@ module.exports = class LuggitPlugin extends Plugin {
       const status = await this.git.status();
       if (status.repo) status.recent = await this.git.recentFiles();
       if (id !== this.refreshId) return;
-      if (status.repo) this.stopGitWatch ||= this.git.watch(() => this.scheduleRefresh());
+      if (status.repo) this.stopGitWatch ||= this.git.watch(() => this.scheduleRefresh(), this.app.vault.configDir);
       this.lastRefreshError = ''; this.snapshot = status; this.render();
       if (notify) new Notice('변경사항을 새로고침했습니다.', 1500);
     } catch (error) {

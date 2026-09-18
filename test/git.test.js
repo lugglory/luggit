@@ -125,18 +125,6 @@ test('unstage failure with a HEAD never falls back to removing the index', async
   await assert.rejects(repo.git.unstage(), /index.lock/);
   assert.equal((await repo.git.status()).files[0].staged, true);
 });
-test('exit status is fresh, includes unsaved tracked editors, and ignores ignored files', async t => {
-  const repo = await repository(t);
-  await repo.write('note.md', 'base'); await repo.write('.gitignore', 'ignored.md\n'); await repo.git.commit('initial');
-  await repo.write('ignored.md', 'ignored');
-  let status = repo.git.statusForExit([{ path: 'note.md', content: 'new editor text' }, { path: 'ignored.md', content: 'changed ignored text' }]);
-  assert.deepEqual(status.files, []); assert.deepEqual(status.unsaved, ['note.md']);
-  await repo.write('note.md', 'disk edit');
-  status = repo.git.statusForExit();
-  assert.deepEqual(status.files.map(file => file.path), ['note.md']);
-  const child = path.join(repo.root, 'child'); await fs.mkdir(child);
-  assert.throws(() => new GitService(child).statusForExit(), /상위 폴더/);
-});
 test('exit push sends existing commits and never stages or commits working changes', async t => {
   const repo = await repository(t);
   const remote = await fs.mkdtemp(path.join(os.tmpdir(), 'luggit-exit-remote-'));
@@ -150,9 +138,10 @@ test('exit push sends existing commits and never stages or commits working chang
   assert.equal((await repo.git.run(['rev-list', '--count', 'HEAD'])).trim(), '1');
 });
 
-test('watching the vault reports outside Git commands and hidden paths', async t => {
+test('watching .git and the config folder reports what Obsidian never does', async t => {
   const repo = await repository(t);
   await repo.write('note.md', 'one\n'); await repo.git.commit('initial');
+  await fs.mkdir(path.join(repo.root, '.obsidian/plugins/sample'), { recursive: true });
   let changes = 0;
   const stop = repo.git.watch(() => changes++);
   t.after(stop);
@@ -165,8 +154,11 @@ test('watching the vault reports outside Git commands and hidden paths', async t
   assert.ok(changes > 0);
   await new Promise(resolve => setTimeout(resolve, 300));
   changes = 0;
-  await fs.mkdir(path.join(repo.root, '.obsidian/plugins/sample'), { recursive: true });
+  await repo.write('.obsidian/workspace.json', '{}');
+  await repo.write('ordinary note.md', 'Obsidian reports this one itself');
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.equal(changes, 0, 'The constantly rewritten workspace layout and ordinary vault files are not watched');
   await repo.write('.obsidian/plugins/sample/main.js', 'changed');
   for (let i = 0; i < 40 && !changes; i++) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.ok(changes > 0, 'Hidden paths that Obsidian never reports are detected');
+  assert.ok(changes > 0, 'Hidden configuration that Obsidian never reports is detected');
 });

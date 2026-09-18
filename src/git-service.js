@@ -1,5 +1,5 @@
 'use strict';
-const { execFile, execFileSync } = require('node:child_process');
+const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const syncFs = require('node:fs');
 const path = require('node:path');
@@ -49,59 +49,33 @@ class GitService {
       });
     });
   }
-  // beforeunload cannot wait for Promises. Only local, read-only commands run
-  // here, with a shared deadline. Never stage, commit, or push synchronously.
-  statusForExit(editors = []) {
-    const deadline = Date.now() + 3000;
-    const run = args => {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new Error('종료 전 Git 상태 확인 시간이 초과되었습니다.');
-      return execFileSync(this.executable, ['--no-optional-locks', '-c', 'core.quotepath=false', ...args], {
-        cwd: this.root, windowsHide: true, timeout: remaining, encoding: 'utf8',
-        maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' },
-      });
-    };
-    let root;
-    try { root = run(['rev-parse', '--show-toplevel']).trim(); }
-    catch (error) { if (/not a git repository/i.test(String(error.stderr || error.message))) return { repo: false, files: [], unsaved: [] }; throw error; }
-    const actual = syncFs.realpathSync.native(root), expected = syncFs.realpathSync.native(this.root);
-    const same = process.platform === 'win32' ? actual.toLowerCase() === expected.toLowerCase() : actual === expected;
-    if (!same) throw new Error('보관함 상위 폴더의 Git 저장소는 종료 확인 대상이 아닙니다.');
-    const files = parseStatus(run(['status', '--porcelain=v1', '-z', '--untracked-files=all']));
-    const unsaved = [];
-    if (editors.length) {
-      const paths = [...new Set(editors.map(editor => this.validatePath(editor.path)))];
-      const tracked = new Set(run(['--literal-pathspecs', 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', ...paths]).split('\0'));
-      for (const editor of editors) {
-        if (!tracked.has(editor.path)) continue;
-        try {
-          const disk = syncFs.readFileSync(path.join(this.root, editor.path), 'utf8');
-          if (disk.replace(/\r\n/g, '\n') !== editor.content.replace(/\r\n/g, '\n')) unsaved.push(editor.path);
-        } catch { unsaved.push(editor.path); }
-      }
-    }
-    return { repo: true, files, unsaved: [...new Set(unsaved)] };
-  }
-  // Obsidian's vault events skip hidden paths (.obsidian, dotfiles) and Git commands
-  // run outside the app, which only touch .git. Watch the whole vault folder instead.
+  // Obsidian reports changes to ordinary vault files itself, including edits made
+  // outside the app. It never reports its hidden configuration folder or Git
+  // commands run elsewhere, which only touch .git, so watch just those two folders.
   // Returns a closer, or null when nothing can be watched.
-  watch(onChange) {
+  watch(onChange, configDir = '.obsidian') {
     // libuv aborts the whole process when a Windows 8.3 short path (USERNA~1) is
     // watched, so always resolve to the long path first.
     let root;
     try { root = syncFs.realpathSync.native(this.root); } catch { return null; }
-    // Object writes always come with an index or ref change; skip them and lock files.
-    const listener = prefix => (_type, name) => {
-      const changed = (prefix + String(name || '')).replace(/\\/g, '/');
-      if (!/^\.git\/objects(\/|$)|\.lock$/.test(changed)) onChange();
-    };
+    // Object writes always come with an index or ref change. The workspace layout is
+    // rewritten on every tab switch and is ignored in practically every vault.
+    const ignored = name => /^\.git\/objects(\/|$)|\.lock$/.test(name) ||
+      (name.startsWith(configDir + '/') && /^workspace(-mobile)?\.json$/.test(name.slice(configDir.length + 1)));
     const watchers = [];
-    try { watchers.push(syncFs.watch(root, { recursive: true }, listener(''))); }
-    catch {
-      // No recursive watching on this platform: cover at least the top level and .git.
-      for (const [dir, prefix] of [[root, ''], [path.join(root, '.git'), '.git/']]) {
-        try { watchers.push(syncFs.watch(dir, listener(prefix))); } catch { /* Missing folder. */ }
+    for (const folder of ['.git', configDir]) {
+      const listener = (type, name) => {
+        const changed = folder + '/' + String(name || '').replace(/\\/g, '/');
+        if (ignored(changed)) return;
+        if (type !== 'change') { onChange(); return; }
+        // Merely listing a folder, as git status does, makes Windows report a change
+        // to the folder itself. Only file content counts.
+        syncFs.stat(path.join(root, changed), (error, stats) => { if (error || !stats.isDirectory()) onChange(); });
+      };
+      try { watchers.push(syncFs.watch(path.join(root, folder), { recursive: true }, listener)); }
+      catch {
+        // No recursive watching on this platform, or the folder is missing.
+        try { watchers.push(syncFs.watch(path.join(root, folder), listener)); } catch { /* Missing folder. */ }
       }
     }
     if (!watchers.length) return null;
@@ -137,7 +111,7 @@ class GitService {
   }
   async status() {
     if (!(await this.isRepo())) return { repo: false, files: [], branch: '', ahead: 0 };
-    // Background refreshes must not rewrite .git/index, or the .git watcher would retrigger them.
+    // Background refreshes must not rewrite .git/index, or the folder watcher would retrigger them.
     const files = parseStatus(await this.run(['--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all']));
     const head = await this.hasHead();
     const branch = head ? (await this.run(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() : '(커밋 없음)';

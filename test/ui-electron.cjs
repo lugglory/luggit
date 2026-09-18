@@ -149,20 +149,8 @@ app.whenReady().then(async () => {
     await capture(diffScreenshot);
     await win.webContents.executeJavaScript('lastModal.close(); void 0');
     console.log('Diff UI passed: readable new-file content, line numbers, no raw metadata. Screenshot: ' + diffScreenshot);
-    await win.webContents.executeJavaScript(`
-      window.exitPrompts = [];
-      gitPlugin.git.statusForExit = () => ({ repo: true, files: [{ path: 'not-committed.md' }], unsaved: [] });
-      window.exitAnswer = 1;
-      // window.confirm is blocked by Chromium during beforeunload; the plugin must not rely on it.
-      window.confirm = () => { throw new Error('window.confirm must not be used during beforeunload'); };
-      window.electron = { remote: { dialog: { showMessageBoxSync: options => { exitPrompts.push(options.message); return exitAnswer; } } } }; void 0;
-    `);
-    win.close(); await new Promise(resolve => setTimeout(resolve, 100));
-    assert.equal(win.isDestroyed(), false, 'Cancelling the exit warning keeps the window open');
-    assert.match(await win.webContents.executeJavaScript('exitPrompts[0]'), /커밋하지 않은 변경사항/);
-    await win.webContents.executeJavaScript('window.exitAnswer = 0; void 0');
     await new Promise(resolve => { win.once('closed', resolve); win.close(); });
-    console.log('Exit UI passed: native beforeunload cancellation and approved closing.');
+    console.log('Exit UI passed: uncommitted changes never block closing the window.');
     clearTimeout(deadline); app.exit(0);
   } catch (error) { console.error(error); clearTimeout(deadline); if (!win.isDestroyed()) win.destroy(); app.exit(1); }
 });

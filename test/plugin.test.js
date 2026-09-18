@@ -19,7 +19,7 @@ function plugin() {
   const Plugin = load(filename);
   const result = new Plugin();
   result.render = () => {}; result.refresh = async () => {}; result.draft = 'title'; result.refreshId = 0;
-  result.saveOpenViews = async () => {};
+  result.saveOpenViews = async () => {}; result.app = { vault: { configDir: '.obsidian' } };
   result.exitState = { message: '', write(message) { this.message = message; } };
   result.saveData = async () => { throw new Error('Git operations must not write plugin settings'); };
   return { plugin: result, notices };

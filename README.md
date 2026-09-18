@@ -35,14 +35,13 @@ Enabling the plugin opens the **Git changes** panel in the right sidebar. Reopen
 6. Type a commit message and press `Ctrl+Enter` (`Cmd+Enter` on macOS), or use the toolbar. With nothing staged, a commit stages everything first. An empty message is filled in with the name of the most changed file.
 7. Pull is fast-forward only and runs only when there are no uncommitted changes. Resolve merge conflicts in an external Git tool.
 
-Open notes are saved before every Git action, and only one Git action runs at a time. The lists refresh automatically: the plugin watches the whole vault folder, so edits to hidden paths such as `.obsidian` and Git commands run from a terminal are picked up as well. A **변경사항 새로고침** (refresh) command is available as a fallback. All commands can be given hotkeys under **Settings → Hotkeys**.
+Open notes are saved before every Git action, and only one Git action runs at a time. The lists refresh automatically: Obsidian reports changes to vault files, and the plugin additionally watches the `.obsidian` and `.git` folders, so plugin or settings changes and Git commands run from a terminal are picked up as well. The workspace layout file is skipped because Obsidian rewrites it constantly. A **변경사항 새로고침** (refresh) command is available as a fallback. All commands can be given hotkeys under **Settings → Hotkeys**.
 
 ### Settings
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Pull on startup | On | Fast-forward pull when a remote exists and the vault has no changes. |
-| Warn about uncommitted changes before exit | On | Shows a native confirmation before the window closes or reloads. |
 | Push on exit | On | Pushes existing commits for up to 15 seconds. Never stages or commits. A failure is reported on the next start. |
 | Git executable | `git` | Name or absolute path of the Git executable. |
 
@@ -51,11 +50,11 @@ While the plugin is enabled, Obsidian's shared notice area moves to the bottom r
 ## Permissions and disclosures
 
 - **Shell execution (`child_process`)**: the plugin works by running your installed `git` executable, always with an argument list and never through a shell. It runs no other program. The working directory is always the vault root.
-- **Direct filesystem access (`fs`)**: used only inside the vault folder, to check that the vault is the repository root, to preview untracked files in the diff view, to compare open editors with the saved files before exit, and to watch the vault folder for changes. Nothing outside the vault is read or written.
+- **Direct filesystem access (`fs`)**: used only inside the vault folder, to check that the vault is the repository root, to preview untracked files in the diff view, and to watch the `.obsidian` and `.git` folders for changes. Nothing outside the vault is read or written.
 - **Network**: the plugin makes no network requests of its own. `git pull` and `git push` contact the remotes you configured. No telemetry.
 - **Clipboard**: written only when you select a copy button in the diff view. Never read.
 - **Local storage**: the result of the last push on exit is kept per device, outside the vault, so that notices never modify `data.json`.
-- **Exit handling**: to ask before closing, the plugin wraps Obsidian's `onbeforeunload` hook while enabled and restores it when disabled. Forced quits cannot be intercepted.
+- **Exit handling**: closing the window is never blocked or delayed by a prompt. If push on exit is enabled, the plugin registers a task with Obsidian's `quit` event; forced quits skip it.
 
 ## Development
 
@@ -119,13 +118,12 @@ Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타�
 - 작업 전에 열린 텍스트 문서를 저장하고 저장 내용을 확인합니다. Git 작업은 한 번에 하나씩 실행합니다.
 - `현재 문서 저장 후 스테이지`, `모두 저장 후 스테이지`, `커밋`, `커밋 후 Push`, `Pull`, `Push`, `변경사항 새로고침` 명령에도 Obsidian 설정 → 단축키에서 키를 지정할 수 있습니다. 기존 Obsidian 저장 단축키를 자동으로 덮어쓰지는 않습니다.
 - Pull은 변경사항이 없는 상태에서 fast-forward 방식으로 실행합니다. 병합 충돌 해결, 원격 URL/인증, 브랜치 관리와 작성자 이름/이메일 설정은 외부 Git 도구에서 합니다. upstream이 없으면 `origin` 또는 유일한 원격에 현재 브랜치를 연결해 Push합니다.
-- 목록은 파일 변화를 감지해 로컬 조회로 갱신합니다. 보관함 폴더 전체를 직접 감시하므로 Obsidian이 알려 주지 않는 `.obsidian` 같은 숨김 경로의 변경과, 외부 터미널의 커밋·fetch·checkout처럼 `.git` 폴더만 바뀌는 경우도 포함합니다. 연속된 변경은 0.5초로 모아서 처리하며, 마우스·포커스 이동이나 타이머로는 갱신하지 않습니다. 하위 폴더 감시를 지원하지 않는 환경에서는 `변경사항 새로고침` 명령을 쓸 수 있습니다. Pull 버튼의 Pull이 실패하거나 미커밋 변경으로 중단되어도 로컬 목록은 갱신하고 이유를 알립니다. 명령 팔레트의 `Pull`도 같은 동작을 합니다.
+- 목록은 파일 변화를 감지해 로컬 조회로 갱신합니다. 일반 보관함 파일은 Obsidian이 알려 주는 생성·수정·삭제·이름 변경 이벤트를 쓰고, Obsidian이 알려 주지 않는 설정 폴더(`.obsidian`)와 `.git` 폴더만 직접 감시합니다. 따라서 플러그인·설정 변경과 외부 터미널의 커밋·fetch·checkout도 반영됩니다. 탭 전환마다 다시 쓰이는 `workspace.json`은 감시에서 제외합니다. 연속된 변경은 0.5초로 모아서 처리하며, 마우스·포커스 이동이나 타이머로는 갱신하지 않습니다. 보관함 루트의 다른 점 파일(`.gitignore` 등)만 바뀐 경우는 다음 변화 때 함께 반영되며, 바로 보려면 `변경사항 새로고침` 명령을 씁니다. Pull 버튼의 Pull이 실패하거나 미커밋 변경으로 중단되어도 로컬 목록은 갱신하고 이유를 알립니다. 명령 팔레트의 `Pull`도 같은 동작을 합니다.
 - 커밋 입력창에서 `Ctrl+Enter`(macOS는 `Cmd+Enter`도 지원)로 커밋합니다.
 - 커밋 입력창은 한 줄 높이로 시작하며 줄바꿈·자동 줄바꿈에 맞춰 늘어납니다. 내용을 지우거나 커밋을 완료하면 다시 줄어들고, 패널 폭 변경에도 맞춰집니다.
-- `시작할 때 Pull`, `종료할 때 Push`, `종료 전 미커밋 변경 경고`는 기본 켜짐이며 설정에서 변경할 수 있습니다. 기존에 저장한 설정은 유지됩니다. 종료 Push는 이미 만든 커밋만 최대 15초 동안 보내며 자동 스테이지·커밋은 하지 않습니다. 실패하면 다음 실행에 안내하고, 수동 Push 성공 후 안내를 지웁니다.
+- `시작할 때 Pull`과 `종료할 때 Push`는 기본 켜짐이며 설정에서 변경할 수 있습니다. 기존에 저장한 설정은 유지됩니다. 종료 Push는 이미 만든 커밋만 최대 15초 동안 보내며 자동 스테이지·커밋은 하지 않습니다. 실패하면 다음 실행에 안내하고, 수동 Push 성공 후 안내를 지웁니다.
 - 종료 Push의 진행·오류 상태는 보관함 밖의 기기별 로컬 저장소에 보관합니다. 보관함 경로와 설정 폴더별로 구분하며, 알림 때문에 플러그인의 `data.json`이 바뀌지 않습니다. 일반 사용자 설정은 `data.json`에 유지됩니다. 이 임시 상태를 위한 `.gitignore` 등록은 필요 없습니다.
-- 정상적인 창 닫기·새로고침 직전에 로컬 Git 상태와 열린 편집기 내용을 확인해 미커밋 변경이 있으면 시스템 확인창을 띄웁니다. 취소하면 창을 유지합니다. Git 확인 실패도 알립니다. Chromium은 종료 직전의 `window.confirm`을 차단하므로 Electron의 동기식 기본 대화상자(`닫기`/`취소`)를 사용합니다. 이 대화상자를 쓸 수 없는 환경에서는 종료를 막지 않습니다. 취소한 뒤에도 Obsidian의 종료 처리(`quit` 이벤트)가 다음 종료 때 정상 실행되도록 Obsidian의 `onbeforeunload` 훅을 감싸서 먼저 확인합니다.
-- **종료 처리의 한계:** Obsidian의 `quit` 이벤트는 실행이 보장되지 않으며, 호스트가 `beforeunload` 취소를 무시하거나 강제 종료되면 플러그인이 막을 수 없습니다. 실제 설치 환경에서 확인이 필요합니다. 모바일 강제 종료 경고는 지원하지 않습니다. Git 실행 파일 경로도 설정에서 지정할 수 있습니다.
+- **종료 처리:** 커밋하지 않은 변경이 있어도 종료를 막거나 경고하지 않습니다. Obsidian의 `quit` 이벤트는 실행이 보장되지 않으므로 강제 종료 등에서는 종료 Push가 생략될 수 있습니다. Git 실행 파일 경로도 설정에서 지정할 수 있습니다.
 - 보관함 자체가 저장소 루트여야 합니다. 상위 폴더의 저장소를 잘못 조작하지 않도록 상위 저장소는 거부합니다. 변경사항은 보관함 전체가 대상이므로 `.obsidian`, `.trash` 등 제외할 경로는 보관함의 `.gitignore`에 직접 지정하세요.
 
 ### 개발 및 검증
@@ -139,7 +137,7 @@ npm test
 npm run test:ui
 ```
 
-`src/` 수정 후 빌드하면 실행용 `main.js`가 만들어집니다(저장소에는 포함하지 않고 릴리즈에 첨부합니다). `npm run test:ui`는 숨긴 Electron 테스트 창에서 패널 배치·호버·diff·확인창 키보드 동작과 실제 `beforeunload` 취소/종료을 확인합니다. [요구사항 대조 기록](QA.md)에 적용 범위와 호스트 검증 한계를 정리했습니다.
+`src/` 수정 후 빌드하면 실행용 `main.js`가 만들어집니다(저장소에는 포함하지 않고 릴리즈에 첨부합니다). `npm run test:ui`는 숨긴 Electron 테스트 창에서 패널 배치·호버·diff·확인창 키보드 동작과, 미커밋 변경이 있어도 창이 그대로 닫히는지를 확인합니다. [요구사항 대조 기록](QA.md)에 적용 범위와 호스트 검증 한계를 정리했습니다.
 
 테스트는 임시 Git 저장소에서 스테이지·이름 변경·커밋·로컬 원격 Push·변경 버리기를 실행하고, 커밋 후 Push 재시도 흐름을 검증합니다. UI/보관함 API 대역을 사용한 검증과 실제 Obsidian에서의 검증은 다릅니다. 배포 전 실제 보관함의 복사본에서 동작을 확인하세요.
 
