@@ -196,10 +196,10 @@ class GitView extends ItemView {
     // file list alone. The ahead count is an estimate, so Push is highlighted but
     // never disabled, and nothing is known about Pull before asking the remote.
     const changed = snapshot.files.length > 0;
-    for (const button of [this.commitButton, this.commitPushButton]) {
-      button.disabled = this.plugin.busy || !changed;
-      button.toggleClass('is-pending', changed);
-    }
+    this.commitButton.disabled = this.plugin.busy || !changed;
+    this.commitButton.toggleClass('is-pending', changed);
+    // Commit and push falls through to a plain push, so it follows the Push rule.
+    this.commitPushButton.toggleClass('is-pending', changed || snapshot.ahead > 0);
     this.pushButton.toggleClass('is-pending', snapshot.ahead > 0);
     setTooltip(this.pushButton, `Push · 대기 커밋 ${snapshot.ahead}개`, { placement: 'bottom' });
     this.renderFiles(this.staged, snapshot.files.filter(file => file.staged), true);
@@ -388,10 +388,17 @@ module.exports = class LuggitPlugin extends Plugin {
   }
   async commit(push) {
     return this.perform(push ? '커밋 후 Push' : '커밋', async () => {
-      await this.git.commit(this.draft); this.draft = '';
+      let committed = true;
+      try { await this.git.commit(this.draft); this.draft = ''; }
+      catch (error) {
+        // Having nothing to commit is no reason to skip the push. Real failures still stop here.
+        if (!push || !error.nothingToCommit) throw error;
+        committed = false;
+      }
       if (push) {
         try { await this.push(); }
-        catch (error) { throw new Error('커밋은 완료됐지만 Push에 실패했습니다. Push 버튼으로 다시 시도하세요.\n' + error.message); }
+        catch (error) { throw new Error((committed ? '커밋은 완료됐지만 ' : '') + 'Push에 실패했습니다. Push 버튼으로 다시 시도하세요.\n' + error.message); }
+        if (!committed) { new Notice('커밋할 변경이 없어 Push만 했습니다.', 1500); return false; }
       }
     });
   }

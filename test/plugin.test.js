@@ -140,3 +140,17 @@ test('a stale exit push marker is cleared silently when nothing is waiting to be
   await p.reportExitPush();
   assert.match(notices[0], /지난 종료 Push: offline/); assert.equal(p.exitPushError, 'offline');
 });
+
+test('commit and push still pushes when there is nothing to commit, but not after a real commit failure', async () => {
+  const { plugin: p, notices } = plugin();
+  const events = [];
+  p.git = { commit: async () => { throw Object.assign(new Error('커밋할 변경이 없습니다.'), { nothingToCommit: true }); }, push: async () => events.push('push') };
+  await p.commit(true);
+  assert.deepEqual(events, ['push']); assert.equal(p.draft, 'title', 'The unused message is kept');
+  assert.match(notices.at(-1), /Push만 했습니다/);
+  await p.commit(false);
+  assert.deepEqual(events, ['push']); assert.match(notices.at(-1), /커밋할 변경이 없습니다/, 'A plain commit still reports it');
+  p.git.commit = async () => { throw new Error('hook failed'); };
+  await p.commit(true);
+  assert.deepEqual(events, ['push'], 'A real commit failure never pushes');
+});

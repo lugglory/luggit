@@ -196,7 +196,7 @@ class GitService {
     await this.requireRepo();
     let stats = parseStats(await this.run(['diff', '--cached', '--numstat', '-z']));
     if (!stats.length) { await this.stage(); stats = parseStats(await this.run(['diff', '--cached', '--numstat', '-z'])); }
-    if (!stats.length) throw new Error('커밋할 변경이 없습니다.');
+    if (!stats.length) throw Object.assign(new Error('커밋할 변경이 없습니다.'), { nothingToCommit: true });
     stats.sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path));
     const title = message.trim() || stats[0].path.split('/').pop() + (stats.length > 1 ? ' 등' : '');
     await this.run(['commit', '-m', title]);
