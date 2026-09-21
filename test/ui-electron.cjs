@@ -109,12 +109,11 @@ app.whenReady().then(async () => {
     assert.deepEqual(focus, { afterEntry: 0, afterInternal: 0, afterFileChanges: 1, pulls: 0, gap: '0px' }, 'Pointer and focus movement never refresh; file change requests coalesce into one local refresh; toolbar gaps are removed');
     const recent = await win.webContents.executeJavaScript('runRecentDiffTest()', true);
     assert.deepEqual(recent.queries, ['회의/제품 아이디어.md', '기록/삭제된 메모.md', '회의/제품 아이디어.md', '회의/제품 아이디어.md'], 'Recent diffs are requested only on demand');
-    assert.deepEqual(recent.opened, Array(3).fill('회의/제품 아이디어.md'), 'Existing files open from the title row with a click, Enter, or Space');
-    assert.equal(recent.results[0].openedBeforeClick, 0, 'Clicking a recent file opens its diff first');
-    assert.equal(recent.results[0].hasOpen, true);
-    assert.equal(recent.results[0].openInFooter, true, 'Open is in the footer beside the copy actions');
-    assert.equal(recent.results[0].summaryButtons, 0, 'There is no duplicate open button above the diff');
-    assert.equal(recent.results[0].shortcutIgnored, true, 'Ctrl+Enter on the title does not open or close the modal');
+    assert.deepEqual(recent.opened, Array(3).fill('회의/제품 아이디어.md'), 'Existing files open with a click anywhere in the window, or Enter or Space on the title');
+    assert.equal(recent.results[0].openedBeforeClick, 0, 'Clicking a recent file opens its diff first; copy buttons and the end of a selection do not open the file');
+    assert.equal(recent.results[0].hasOpen, false, 'The whole window opens the file, so there is no separate open button');
+    assert.equal(recent.results[0].summaryButtons, 0, 'There is no open button above the diff either');
+    assert.equal(recent.results[0].shortcutIgnored, true, 'Ctrl+Enter on the title and a click that ends a selection do not open or close the modal');
     assert.deepEqual(recent.copied, ['회의/제품 아이디어.md', '이전 1행 → 현재 1행\n-이전 아이디어\n+바뀐 아이디어',
       '기록/삭제된 메모.md', '이전 1행 → 삭제\n-삭제된 기록'], 'Copy buttons work for existing and deleted files without changing the system clipboard in the fixture');
     assert.equal(recent.results[0].hasTitleAction, true, 'An existing file title row opens its editor');

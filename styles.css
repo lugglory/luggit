@@ -52,6 +52,8 @@ body .notice-container { top: auto; bottom: max(36px, env(safe-area-inset-bottom
 .luggit-diff-modal .modal-content { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .luggit-diff-modal .luggit-diff-title { display: block; box-sizing: border-box; width: 100%; min-height: 40px; padding-block: 8px; color: inherit; cursor: pointer; border-radius: 4px; }
 .luggit-diff-title-text { border-radius: 4px; }
+.luggit-diff-modal.is-openable { cursor: pointer; }
+.luggit-diff-modal.is-openable:hover .luggit-diff-title-text,
 .luggit-diff-title:hover .luggit-diff-title-text { background: var(--background-modifier-hover); }
 .luggit-diff-title:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 3px; }
 .luggit-diff-actions { display: flex; flex-shrink: 0; justify-content: flex-end; gap: 8px; padding-top: 8px; }

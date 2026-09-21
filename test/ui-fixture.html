@@ -219,15 +219,19 @@ async function runRecentDiffTest() {
     for (const label of ['제목 복사 (경로 포함)', '변경 내용 복사']) {
       modal.querySelector(`[aria-label="${label}"]`).click(); await Promise.resolve();
     }
+    const code = modal.querySelector('.luggit-diff-code');
     if (title) {
       title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+      getSelection().selectAllChildren(code); code.click(); // The click that ends a drag selection must not open.
     }
     results.push({ title: modal.querySelector('h3').textContent, label: modal.querySelector('.luggit-diff-label').textContent,
       hasOpen: !!open, hasTitleAction: title?.getAttribute('role') === 'button', fullTitleRow: !!title && titleEdge === title,
-      openInFooter: !!open?.closest('.luggit-diff-actions'), summaryButtons: modal.querySelectorAll('.luggit-diff-summary button').length,
+      summaryButtons: modal.querySelectorAll('.luggit-diff-summary button').length,
       shortcutIgnored: modal.isConnected && opened.length === (title ? 0 : 1),
       removed: modal.querySelectorAll('tr.is-removed').length, text: modal.textContent, openedBeforeClick: opened.length });
-    if (open) titleEdge.click(); else lastModal.close();
+    getSelection().removeAllRanges();
+    code.click(); // Opens from anywhere in the window when the file exists; deleted files stay open.
+    if (!title) { if (!modal.isConnected) throw new Error('A deleted file diff closed on click'); lastModal.close(); }
   }
   for (const key of ['Enter', ' ']) {
     await gitPlugin.showRecentDiff('회의/제품 아이디어.md');

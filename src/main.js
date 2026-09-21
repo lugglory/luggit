@@ -44,10 +44,19 @@ class DiffModal extends Modal {
       this.titleEl.setAttribute('aria-label', this.name + ' 편집기로 열기');
       setTooltip(this.titleEl, this.name + ' · 편집기로 열기');
       const open = event => { event.preventDefault(); event.stopPropagation(); this.close(); this.openFile(); };
-      this.titleEl.onclick = open;
       this.titleEl.onkeydown = event => {
         if ((event.key === 'Enter' || event.key === ' ') && !event.repeat && !event.isComposing &&
           !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) open(event);
+      };
+      // The whole window opens the file, except buttons, scrollbars, and the end of a drag selection.
+      this.modalEl.addClass('is-openable');
+      this.modalEl.onclick = event => {
+        const target = event.target;
+        if (event.button !== 0 || target.closest('button')) return;
+        if (target.classList.contains('luggit-diff-scroll') && (event.offsetX >= target.clientWidth || event.offsetY >= target.clientHeight)) return;
+        const selection = target.ownerDocument.getSelection();
+        if (selection && !selection.isCollapsed && this.modalEl.contains(selection.anchorNode)) return;
+        open(event);
       };
     }
     this.modalEl.addClass('luggit-diff-modal');
@@ -79,7 +88,6 @@ class DiffModal extends Modal {
     const actions = this.contentEl.createDiv({ cls: 'luggit-diff-actions', attr: { role: 'group', 'aria-label': '비교 문서 작업' } });
     iconButton(actions, ['copy'], '제목 복사 (경로 포함)', () => this.copy(this.name));
     iconButton(actions, ['clipboard-list'], '변경 내용 복사', () => this.copy(copyableDiff(this.diff)));
-    if (this.openFile) iconButton(actions, ['file-pen-line'], '문서 열기', () => { this.close(); this.openFile(); });
   }
   async copy(text) {
     try {
