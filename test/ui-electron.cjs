@@ -107,6 +107,9 @@ app.whenReady().then(async () => {
     assert.deepEqual(states.staged, { commitPush: 'enabled+highlight', commit: 'enabled+highlight', stage: 'disabled', unstage: 'enabled', push: 'enabled', pull: 'enabled' });
     const focus = await win.webContents.executeJavaScript('runPanelFocusTest()', true);
     assert.deepEqual(focus, { afterEntry: 0, afterInternal: 0, afterFileChanges: 1, pulls: 0, gap: '0px' }, 'Pointer and focus movement never refresh; file change requests coalesce into one local refresh; toolbar gaps are removed');
+    const panelOpen = await win.webContents.executeJavaScript('runPanelOpenTest()', true);
+    assert.deepEqual(panelOpen, { afterOverlap: { created: 1, panels: 1 }, created: 0, types: ['markdown', 'luggit-changes'], keptFirst: true },
+      'Overlapping opens create one panel; a saved panel is reused before its view loads, and duplicates are removed');
     const recent = await win.webContents.executeJavaScript('runRecentDiffTest()', true);
     assert.deepEqual(recent.queries, ['회의/제품 아이디어.md', '기록/삭제된 메모.md', '회의/제품 아이디어.md', '회의/제품 아이디어.md'], 'Recent diffs are requested only on demand');
     assert.deepEqual(recent.opened, Array(3).fill('회의/제품 아이디어.md'), 'Existing files open with a click anywhere in the window, or Enter or Space on the title');

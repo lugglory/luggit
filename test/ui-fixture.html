@@ -194,6 +194,23 @@ async function runPanelFocusTest() {
   plugin.refresh = refresh; plugin.pullFromRemote = remote;
   return { afterEntry, afterInternal, afterFileChanges: refreshes, pulls, gap: getComputedStyle(view.contentEl.querySelector('.luggit-header')).columnGap };
 }
+async function runPanelOpenTest() {
+  const workspace = gitPlugin.app.workspace, original = { ...workspace }, revealed = [];
+  let leaves = [], created = 0;
+  const makeLeaf = type => { const leaf = { type, getViewState: () => ({ type: leaf.type }), detach() { leaves = leaves.filter(other => other !== leaf); },
+    async setViewState(state) { await new Promise(resolve => setTimeout(resolve, 10)); leaf.type = state.type; } }; return leaf; };
+  workspace.iterateAllLeaves = callback => leaves.forEach(callback);
+  workspace.getRightLeaf = () => { created++; const leaf = makeLeaf('empty'); leaves.push(leaf); return leaf; };
+  workspace.revealLeaf = async leaf => revealed.push(leaf);
+  await Promise.all([gitPlugin.openPanel(), gitPlugin.openPanel()]);
+  const afterOverlap = { created, panels: leaves.length };
+  // A leaf restored from the saved layout whose view is not ours yet, plus a duplicate saved by an older version.
+  const kept = makeLeaf('luggit-changes'); leaves = [makeLeaf('markdown'), kept, makeLeaf('luggit-changes')]; created = 0;
+  await gitPlugin.openPanel();
+  const result = { afterOverlap, created, types: leaves.map(leaf => leaf.type), keptFirst: leaves.includes(kept) && revealed.at(-1) === kept };
+  Object.assign(workspace, original);
+  return result;
+}
 async function runRecentDiffTest() {
   const queries = [], opened = [], results = [];
   const copied = [], clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

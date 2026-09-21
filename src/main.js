@@ -310,12 +310,22 @@ module.exports = class LuggitPlugin extends Plugin {
       });
     });
   }
-  async openPanel() {
-    try {
-      let leaf = this.app.workspace.getLeavesOfType(VIEW)[0];
-      if (!leaf) { leaf = this.app.workspace.getRightLeaf(false); if (!leaf) return; await leaf.setViewState({ type: VIEW, active: true }); }
-      await this.app.workspace.revealLeaf(leaf);
-    } catch (error) { this.fail(error); }
+  // Matches saved state too: a leaf kept across a plugin update is ours before its view is rebuilt.
+  panelLeaves() {
+    const leaves = [];
+    this.app.workspace.iterateAllLeaves(leaf => { if (leaf.getViewState().type === VIEW) leaves.push(leaf); });
+    return leaves;
+  }
+  openPanel() {
+    // One at a time, so overlapping calls cannot each create a panel.
+    return this.openingPanel ||= (async () => {
+      try {
+        let [leaf, ...extras] = this.panelLeaves();
+        for (const extra of extras) extra.detach();
+        if (!leaf) { leaf = this.app.workspace.getRightLeaf(false); if (!leaf) return; await leaf.setViewState({ type: VIEW, active: true }); }
+        await this.app.workspace.revealLeaf(leaf);
+      } catch (error) { this.fail(error); } finally { this.openingPanel = null; }
+    })();
   }
   scheduleRefresh() { window.clearTimeout(this.refreshTimer); this.refreshTimer = window.setTimeout(() => this.refresh(), 500); }
   async pullFromRemote() {
@@ -324,7 +334,8 @@ module.exports = class LuggitPlugin extends Plugin {
       if (status.repo && (await this.git.run(['remote'])).trim()) await this.git.pull();
     });
   }
-  render() { for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) leaf.view.render(this.snapshot || { repo: false, files: [] }); }
+  // A background tab holds a deferred placeholder until it is shown; its onOpen refreshes then.
+  render() { for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) if (leaf.view instanceof GitView) leaf.view.render(this.snapshot || { repo: false, files: [] }); }
   async refresh(force = false, notify = false) {
     if (this.busy && !force) return;
     const id = ++this.refreshId;
