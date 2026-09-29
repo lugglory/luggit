@@ -1,12 +1,12 @@
 # Luggit
 
-A Git changes panel for the Obsidian right sidebar: review diffs, stage, commit, push and pull your vault without leaving the app. Every action is an icon button, including a combined **Commit and push** button.
+A Git diff panel for Obsidian. Review staged changes, working changes, and files from recent commits, and resolve note conflicts while preserving both alternatives. Use Obsidian Git or your usual Git tools for repository setup, staging, commits, and synchronization.
 
-Desktop only. Requires Obsidian 1.7.2 or later and a working [Git](https://git-scm.com/downloads) installation. The vault folder itself must be the root of the Git repository; a repository in a parent folder is refused on purpose.
+Desktop only. Requires Obsidian 1.7.2 or later and an installed Git executable. The vault itself must be the repository root; inherited repositories are refused.
 
-Luggit is an independent plugin. It is not an official Git Project product and is not affiliated with or endorsed by the Git Project. See [NOTICE.md](NOTICE.md) for the Git logo's source, license and trademark notice.
+Luggit is independent and is not affiliated with or endorsed by the Git Project. See [NOTICE.md](NOTICE.md) for the logo's attribution, license, and trademark notice.
 
-[한국어 설명은 아래에 있습니다.](#한국어)
+[한국어 설명](#한국어)
 
 ## Installation
 
@@ -23,38 +23,41 @@ Luggit is an independent plugin. It is not an official Git Project product and i
 
 Release assets are built by GitHub Actions and carry [artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds). Verify a download with `gh attestation verify main.js --repo lugglory/luggit`.
 
-## Usage
+## Review changes
 
-Enabling the plugin opens the **Git changes** panel in the right sidebar. Reopen it any time from the ribbon icon or with the command **Luggit: Git 변경사항 패널 열기** (open the Git changes panel). The interface is currently in Korean; every button has a tooltip and an accessible name.
+The **Git changes** panel opens in the right sidebar. Reopen it from the ribbon or the **Git 변경사항 패널 열기** command.
 
-1. If the vault is not a repository yet, select the **create repository** button in the panel. Remotes, authentication, branches and your author name and email are set up with your usual Git tools.
-2. The toolbar at the top holds, in order: **Commit and push**, **Commit**, **Stage all**, **Unstage all**, **Push**, **Pull**. **Commit** is highlighted when there are changes and **Push** when commits are waiting; **Commit and push** is highlighted in either case and simply pushes when there is nothing to commit. Buttons that certainly cannot do anything (committing or staging with nothing to commit or stage) are disabled; pushing and pulling always stay available because only the remote knows for sure.
-3. Below the commit message box, the **Staged**, **Changed** and **Recently changed files** sections list files by name (hover for the full path). Select a section title to collapse it.
-4. Select a file to open its diff with old and new line numbers. From the diff you can copy the path, copy the changes, or open the note for editing.
-5. Each file row has icon buttons to stage, unstage or discard. Discarding asks for confirmation; tracked files return to their indexed content and untracked files go to the trash.
-6. Type a commit message and press `Ctrl+Enter` (`Cmd+Enter` on macOS), or use the toolbar. With nothing staged, a commit stages everything first. An empty message is filled in with the name of the most changed file.
-7. Pull is fast-forward only and runs only when there are no uncommitted changes. Resolve merge conflicts in an external Git tool.
+- **Staged / 스테이지됨** and **Changed / 변경됨** retain their separate lists and diffs. These are views of Git's index and working files, not staging controls.
+- **Recently changed files / 최근 변경한 파일** lists up to 30 paths from the latest 30 first-parent commits. Select a file to see the last commit that changed that file, including deleted files.
+- Select a section title to collapse it. File rows show names; tooltips and diff titles show full paths.
+- Diffs include line numbers, selectable text, path copying, and change copying. Click an existing note's diff to open its editor. Long diffs display the first 3,000 rows; copying includes all loaded changes.
+- Lists refresh from vault events and local `.git` / configuration-folder changes. Workspace layout changes are ignored. The **변경사항 새로고침** command refreshes locally.
 
-Open notes are saved before every Git action, and only one Git action runs at a time. The lists refresh automatically: Obsidian reports changes to vault files, and the plugin additionally watches the `.obsidian` and `.git` folders, so plugin or settings changes and Git commands run from a terminal are picked up as well. The workspace layout file is skipped because Obsidian rewrites it constantly. A **변경사항 새로고침** (refresh) command is available as a fallback. All commands can be given hotkeys under **Settings → Hotkeys**.
+There are no commit, push, pull, stage, unstage, discard, or repository-creation actions. Startup pull and exit push have been removed. Previously saved automatic-sync settings are ignored, even if enabled. No quit handler is registered. The only setting is the Git executable.
 
-### Settings
+## Preserve note conflicts
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Pull on startup | On | Fast-forward pull when a remote exists and the vault has no changes. |
-| Push on exit | On | Pushes existing commits for up to 15 seconds. Never stages or commits. A failure is reported on the next start. |
-| Git executable | `git` | Name or absolute path of the Git executable. |
+Conflicted files show **U** and a **내용 보존하며 충돌 해결** button.
 
-While the plugin is enabled, Obsidian's shared notice area moves to the bottom right so notices do not cover the panel toolbar. This also applies to notices from other plugins.
+1. Open the conflict preview. Open text editors are saved and checked first.
+2. For UTF-8 Markdown/text notes with valid conflict markers, the preview keeps both alternatives in each conflict and leaves surrounding content unchanged. Duplicate text and contradictory statements may remain intentionally. The ancestor in diff3 conflicts is preserved in the backup, not added to the resulting note.
+3. Select **적용하고 해결로 표시** to back up the originals, apply the preview, and stage only this file to mark it resolved. Other staged files remain staged. Luggit never commits, continues a merge/rebase, or pushes; finish that work with Obsidian Git or another Git tool.
+4. **원본만 백업** saves the originals without editing or staging. Cancel, Escape, or closing the preview applies nothing.
 
-## Permissions and disclosures
+YAML-frontmatter conflicts, binary attachments, unsupported encodings/formats, absent working files, malformed markers, and differing alternatives without markers require manual review. Luggit offers backup only for these cases. Symlinks, submodules, and repositories with an external Git directory require an external tool and are not written.
 
-- **Shell execution (`child_process`)**: the plugin works by running your installed `git` executable, always with an argument list and never through a shell. It runs no other program. The working directory is always the vault root.
-- **Direct filesystem access (`fs`)**: used only inside the vault folder, to check that the vault is the repository root, to preview untracked files in the diff view, and to watch the `.obsidian` and `.git` folders for changes. Nothing outside the vault is read or written.
-- **Network**: the plugin makes no network requests of its own. `git pull` and `git push` contact the remotes you configured. No telemetry.
-- **Clipboard**: written only when you select a copy button in the diff view. Never read.
-- **Local storage**: the result of the last push on exit is kept per device, outside the vault, so that notices never modify `data.json`.
-- **Exit handling**: closing the window is never blocked or delayed by a prompt. If push on exit is enabled, the plugin registers a task with Obsidian's `quit` event; forced quits skip it.
+Every backup is a separate directory under `<vault>/.git/luggit-backups/conflict-*`. `metadata.json` identifies the original path and available versions: `base.blob` (ancestor), `ours.blob` (Git stage 2), `theirs.blob` (stage 3), and `working.blob` (working file before applying). Missing versions are recorded as null. Blob files contain the original bytes; copy the desired version to a new filename with the original extension to inspect or restore it. During rebase, Git's stage labels do not necessarily mean “my device” and “the other device.”
+
+The completion/error notice includes the backup location. **These backups are local, are not Git-synchronized, and remain until you remove them.** Copy them elsewhere if you need off-device recovery. Deleting `.git` also deletes these backups.
+
+A changed working file or conflict index invalidates the preview. Git's index lock prevents overlapping normal Git writes while applying. If writing or staging fails, backups remain and the real index is not partially staged; inspect the current note and reopen the conflict preview.
+
+## Permissions
+
+- Runs the configured Git executable with argument arrays, without a shell. Luggit does not invoke network commands or collect telemetry.
+- Reads Git data and local files; watches `.git` and the configuration folder. Conflict resolution writes backup files and temporary indexes inside `.git`, modifies the selected note through Obsidian, and updates the index only on explicit apply.
+- Clipboard writes occur only when selecting a copy button. The clipboard is never read.
+- No automatic sync or exit-status local storage. Settings retain only the Git executable when next saved.
 
 ## Development
 
@@ -65,93 +68,37 @@ npm test
 npm run test:ui
 ```
 
-`npm run test:ui` drives the panel in a hidden Electron window. To release, run `npm version patch` (or `minor` / `major`) and `git push --follow-tags`; GitHub Actions builds, tests, attests and publishes the release.
-
-## License
-
-[MIT](LICENSE). The Git logo is covered by separate terms; see [NOTICE.md](NOTICE.md).
-
----
+`main.js` is generated and attached to releases, not tracked. Tests use temporary Git repositories and a hidden Electron window with an Obsidian API fixture. They do not replace testing inside a real Obsidian vault; see [QA.md](QA.md). To release, run `npm version patch` (or `minor` / `major`) and `git push --follow-tags`.
 
 ## 한국어
 
-Revision의 Git 패널을 Obsidian 오른쪽 사이드바에서 사용하는 독립 플러그인입니다. 버튼은 아이콘으로만 표시하며, 커밋 아이콘과 Push 아이콘을 합친 **커밋 후 Push** 버튼을 포함합니다.
+Luggit은 **메모의 Git diff를 검토하고 충돌 내용을 보존하는 패널**입니다. 저장소 설정·일반 스테이지 작업·커밋·동기화는 Obsidian Git이나 외부 Git 도구에 맡깁니다.
 
-Git 프로젝트의 공식·제휴 제품이 아닙니다. Git 기능을 나타내는 공식 로고의 [출처·라이선스·상표 안내](NOTICE.md)를 확인하세요.
+### 설치와 사용
 
-패널 상단 버튼을 가리지 않도록 Obsidian 공용 알림 영역을 오른쪽 아래로 배치합니다. 플러그인이 켜져 있는 동안 다른 플러그인의 알림에도 적용됩니다. 일반 완료 알림은 1.5초, 오류는 6초, 지난 종료 시 Push 실패는 8초 동안 표시하며, 작업 중 알림은 작업이 끝나면 사라집니다.
+데스크톱 Obsidian 1.7.2 이상과 Git이 필요하며, 보관함 자체가 Git 저장소 루트여야 합니다. 릴리즈의 `main.js`, `manifest.json`, `styles.css`를 보관함의 `.obsidian/plugins/luggit/`에 넣고 플러그인을 활성화하세요.
 
-데스크톱 Obsidian 1.7.2 이상과 Git이 필요합니다.
+- **스테이지됨**, **변경됨**, **최근 변경한 파일** 목록과 접기/펼치기를 유지합니다. 파일별 diff, 줄 번호, 경로·변경 내용 복사, 편집기로 열기를 지원합니다.
+- 최근 파일은 현재 브랜치의 최근 30개 커밋(첫 부모 이력)에서 최대 30개 경로를 추출합니다. 클릭하면 그 파일을 마지막으로 변경한 커밋 한 건의 diff를 보여줍니다. 삭제된 파일도 조회할 수 있습니다.
+- 커밋 입력창과 commit·push·pull·stage·unstage·변경 버리기·저장소 생성 기능은 없습니다. **시작 시 Pull과 종료 시 Push는 기존 설정이 켜져 있어도 실행하지 않습니다.**
+- 파일 변경에 따른 로컬 목록 자동 갱신은 유지합니다. 필요하면 명령 팔레트의 `변경사항 새로고침`을 사용하세요. 설정에는 Git 실행 파일만 남습니다.
 
-### 설치
+### 내용 보존 충돌 해결
 
-1. 원하는 보관함의 `.obsidian/plugins/` 안에 `luggit` 폴더를 만듭니다.
-2. [최신 릴리즈](https://github.com/lugglory/luggit/releases/latest)에서 `manifest.json`, `main.js`, `styles.css`를 받아 넣습니다. 직접 빌드하려면 `npm ci && npm run build` 후 같은 세 파일을 복사합니다.
-3. Obsidian 설정 → 커뮤니티 플러그인에서 플러그인을 켭니다. 목록에 없으면 Obsidian을 다시 시작합니다.
+충돌 파일은 `U`로 표시하며, 옆의 **내용 보존하며 충돌 해결** 버튼으로 미리보기를 엽니다. 먼저 열린 텍스트 문서를 저장하고 저장 내용을 확인합니다.
 
-```text
-보관함/.obsidian/plugins/luggit/
-├── manifest.json
-├── main.js
-└── styles.css
-```
+일반 UTF-8 메모(`.md`, `.markdown`, `.txt`)는 충돌 구간의 양쪽 내용을 순서대로 이어 붙입니다. 충돌 밖의 내용·공백·줄바꿈은 유지하고, 중복을 임의로 제거하지 않습니다. 서로 모순되는 문장이 남을 수 있으므로 미리보기를 확인하세요. diff3의 공통 조상 내용은 결과에 합치지 않고 별도로 백업합니다.
 
-### 사용법
+**적용하고 해결로 표시**를 누르면 기준·양쪽 원본·현재 편집본을 백업하고 결과를 적용한 뒤 **해당 파일만 stage**합니다. 충돌 해결을 Git에 기록하기 위한 예외입니다. 다른 파일의 스테이지 상태는 유지하며 커밋·병합/rebase 계속·push는 실행하지 않습니다.
 
-켜면 오른쪽 사이드바에 Git 변경사항 패널이 열립니다. 리본의 Git 공식 로고 아이콘이나 `Luggit: Git 변경사항 패널 열기` 명령으로 다시 열 수 있습니다. 패널 탭에도 같은 아이콘을 사용합니다. Git 기능을 나타내는 로고이며 이 플러그인은 Git 프로젝트의 공식·제휴 제품이 아닙니다. [로고 출처와 라이선스·상표 안내](NOTICE.md).
+**원본만 백업**은 파일과 스테이지 상태를 바꾸지 않습니다. YAML 속성 충돌, 바이너리 첨부파일, 지원하지 않는 형식/인코딩, 현재 파일이 없는 충돌, 잘못된 충돌 표식, 양쪽 내용이 다른데 표식이 없는 파일은 백업 후 외부 도구에서 직접 검토하고 해결하세요. 심볼릭 링크·서브모듈·외부 Git 디렉터리를 사용하는 저장소에는 자동으로 쓰지 않습니다.
 
-- 위에서부터 작업 아이콘, 커밋 메시지, 스테이지됨, 변경됨, 최근 변경한 파일이 나옵니다. 브랜치명과 상태 문구는 패널에 표시하지 않으며, 진행 상황·완료·오류는 Obsidian 알림으로 표시합니다.
-- 영역은 구분선 없이 굵은 제목과 6px 간격으로 구분합니다. 섹션 제목 옆 버튼은 파일 행과 같은 14px 아이콘·가로 정렬을 사용하되, 사이 여백까지 활용해 클릭·호버 영역을 28×28px로 넓힙니다(파일 행 버튼은 24×24px).
-- `스테이지됨`, `변경됨`, `최근 변경한 파일` 제목 행으로 각 목록을 접고 펼칩니다. 목록이 새로고침되어도 접힌 상태를 유지하며, 옆의 전체 작업 버튼은 접기와 별도로 동작합니다.
-- 섹션 제목은 왼쪽 정렬하고 호버 강조는 작업 버튼 영역까지 제목 행 전체에 적용합니다. 하위 항목은 펼침 화살표와 간격에 맞춰 16px 들여씁니다.
-- **패널의 작업 버튼은 아이콘만** 표시합니다. 마우스를 올리면 Obsidian 툴팁 하나로 기능을 표시하고, 스크린 리더용 이름과 키보드 포커스를 제공합니다. 툴바의 `Git 작업` 이름은 툴팁으로 표시하지 않습니다. 확인창에서는 버튼 이름을 표시합니다.
-- 패널 맨 위에 **커밋 후 Push**, **커밋**, **모두 스테이지**, **모두 스테이지 해제**, **Push**, **Pull** 순서의 버튼이 그룹 구분 없이 같은 간격으로 가운데 정렬됩니다. Pull 버튼은 열린 문서를 저장하고 원격 저장소가 있으면 Pull한 뒤 목록을 갱신합니다. 원격이 없으면 로컬 목록만 갱신합니다. 목록은 자동으로 갱신되므로 별도 새로고침 버튼은 없고, 상단 전체 버리기 버튼도 없습니다. 커밋 후 Push는 Push 화살표 아래 가로선을 커밋의 선과 원으로 바꾼 하나의 아이콘으로 표시됩니다.
-- 변경이 있으면 커밋, 대기 커밋이 있으면 Push, 둘 중 하나라도 있으면 커밋 후 Push의 아이콘 색이 강조됩니다. 커밋 후 Push는 커밋할 변경이 없으면 Push만 실행합니다(실제 커밋 오류가 나면 Push하지 않습니다). 스테이지·해제는 선택 사항이라 강조하지 않습니다. 파일 목록만으로 확실히 불가능한 동작(변경 없는 커밋, 대상 없는 스테이지·해제)은 비활성화합니다. 대기 커밋 수는 추정이므로 Push와 커밋 후 Push는 막지 않고, Pull은 원격에 묻기 전에는 알 수 없어 강조도 비활성도 하지 않습니다. 기본 배경·테두리는 없고, 호버할 때 배경이 표시됩니다. 커밋 후 Push에서 Push만 실패하면 커밋은 유지되며, 단독 Push 버튼으로 재시도합니다.
-- 스테이지된 파일이 없을 때 커밋하면 전체 변경을 먼저 스테이지합니다. 이미 스테이지된 파일이 있으면 그 파일들만 커밋합니다. 빈 메시지는 변경 줄 수가 가장 많은 파일명으로 채우며, 여러 파일이면 ` 등`을 붙입니다.
-- 파일 행을 누르면 diff가 열립니다. 파일 헤더·`/dev/null` 같은 Git 메타데이터는 숨기고, 이전/현재 줄 번호와 추가·삭제 줄 수를 보여줍니다. 본문 자체에 들어 있는 같은 문구는 그대로 보존합니다. 긴 diff는 처음 3,000줄을 표시하고 생략 여부를 알립니다.
-- diff 본문은 드래그해 선택하고 복사할 수 있습니다. 파일이 남아 있으면 비교창의 아무 곳이나 클릭하거나 제목 행에서 Enter/Space를 눌러 편집 모드로 엽니다. 버튼·스크롤바 클릭과 드래그 선택을 마치는 클릭은 문서를 열지 않습니다. 제목 강조는 글자에만 적용하고 닫기 X는 유지합니다. 하단에는 제목 복사(경로 포함), 변경 내용 복사 버튼을 두며 별도의 문서 열기 버튼은 없습니다. 변경 내용은 추가·삭제 표시와 문맥을 포함하며 화면의 3,000줄 제한 없이 불러온 diff 전체를 복사합니다. 삭제된 파일에도 복사 버튼은 제공하며 클릭해도 문서를 열지 않습니다. 커밋과 혼동하지 않도록 Ctrl+Enter 등 문서 열기 단축키는 추가하지 않습니다.
-- 행 위에 마우스를 올리면 글자색·밑줄 변화 없이 행 배경만 강조됩니다. 파일별 버튼도 평소에는 투명 배경·무테입니다. 상태 문자는 테마와 독립적인 고정 색상을 사용합니다(M 주황, A 초록, D 빨강, R 파랑, C 청록, U 자홍, T 보라, ? 회청).
-- 변경 목록·최근 파일에는 파일명만 표시하고 전체 경로는 툴팁에 남깁니다. diff 비교창 제목에는 전체 경로를 표시합니다. 같은 이름의 파일도 실제 동작은 전체 경로를 기준으로 처리합니다.
-- 최근 변경한 파일은 현재 브랜치의 최근 30개 커밋(병합 시 첫 부모 이력)에서 최대 30개 경로를 표시하며, 삭제된 파일도 남깁니다. 클릭하면 **그 파일을 마지막으로 변경한 커밋 한 건**의 diff와 커밋 번호를 보여줍니다. 현재 작업 중인 미커밋 변경은 이 비교에 합치지 않습니다. diff는 클릭한 파일만 조회하고, 현재 파일이 남아 있을 때만 비교창 클릭으로 문서를 엽니다.
-- 파일별 스테이지·해제·변경 버리기는 각 행의 아이콘으로 실행합니다. 전체 스테이지·해제는 상단과 각 섹션 제목 옆에 모두 제공합니다. `변경됨` 옆에는 모두 버리기도 유지하며 확인창을 거칩니다. 추적 중인 파일은 **인덱스에 저장된 내용**으로 돌아가고, 추적하지 않는 새 파일은 휴지통으로 보냅니다.
-- 확인창 버튼은 오른쪽 정렬된 `취소`·`변경 버리기`/`모두 버리기`입니다. 승인 버튼에 기본 포커스가 있으며 Enter/Space로 승인합니다. 취소 버튼으로 직접 포커스를 옮겼을 때는 해당 버튼의 기본 동작을 유지합니다. Esc나 바깥쪽 클릭은 취소입니다.
-- 작업 전에 열린 텍스트 문서를 저장하고 저장 내용을 확인합니다. Git 작업은 한 번에 하나씩 실행합니다.
-- `현재 문서 저장 후 스테이지`, `모두 저장 후 스테이지`, `커밋`, `커밋 후 Push`, `Pull`, `Push`, `변경사항 새로고침` 명령에도 Obsidian 설정 → 단축키에서 키를 지정할 수 있습니다. 기존 Obsidian 저장 단축키를 자동으로 덮어쓰지는 않습니다.
-- Pull은 변경사항이 없는 상태에서 fast-forward 방식으로 실행합니다. 병합 충돌 해결, 원격 URL/인증, 브랜치 관리와 작성자 이름/이메일 설정은 외부 Git 도구에서 합니다. upstream이 없으면 `origin` 또는 유일한 원격에 현재 브랜치를 연결해 Push합니다.
-- 목록은 파일 변화를 감지해 로컬 조회로 갱신합니다. 일반 보관함 파일은 Obsidian이 알려 주는 생성·수정·삭제·이름 변경 이벤트를 쓰고, Obsidian이 알려 주지 않는 설정 폴더(`.obsidian`)와 `.git` 폴더만 직접 감시합니다. 따라서 플러그인·설정 변경과 외부 터미널의 커밋·fetch·checkout도 반영됩니다. 탭 전환마다 다시 쓰이는 `workspace.json`은 감시에서 제외합니다. 연속된 변경은 0.5초로 모아서 처리하며, 마우스·포커스 이동이나 타이머로는 갱신하지 않습니다. 보관함 루트의 다른 점 파일(`.gitignore` 등)만 바뀐 경우는 다음 변화 때 함께 반영되며, 바로 보려면 `변경사항 새로고침` 명령을 씁니다. Pull 버튼의 Pull이 실패하거나 미커밋 변경으로 중단되어도 로컬 목록은 갱신하고 이유를 알립니다. 명령 팔레트의 `Pull`도 같은 동작을 합니다.
-- 커밋 입력창에서 `Ctrl+Enter`(macOS는 `Cmd+Enter`도 지원)로 커밋합니다.
-- 커밋 입력창은 한 줄 높이로 시작하며 줄바꿈·자동 줄바꿈에 맞춰 늘어납니다. 내용을 지우거나 커밋을 완료하면 다시 줄어들고, 패널 폭 변경에도 맞춰집니다.
-- `시작할 때 Pull`과 `종료할 때 Push`는 기본 켜짐이며 설정에서 변경할 수 있습니다. 기존에 저장한 설정은 유지됩니다. 종료 Push는 이미 만든 커밋만 최대 15초 동안 보내며 자동 스테이지·커밋은 하지 않습니다. 실패하면 다음 실행에 안내하고, 수동 Push 성공 후 안내를 지웁니다.
-- 종료 Push의 진행·오류 상태는 보관함 밖의 기기별 로컬 저장소에 보관합니다. 보관함 경로와 설정 폴더별로 구분하며, 알림 때문에 플러그인의 `data.json`이 바뀌지 않습니다. 일반 사용자 설정은 `data.json`에 유지됩니다. 이 임시 상태를 위한 `.gitignore` 등록은 필요 없습니다.
-- **종료 처리:** 커밋하지 않은 변경이 있어도 종료를 막거나 경고하지 않습니다. Obsidian의 `quit` 이벤트는 실행이 보장되지 않으므로 강제 종료 등에서는 종료 Push가 생략될 수 있습니다. Git 실행 파일 경로도 설정에서 지정할 수 있습니다.
-- 보관함 자체가 저장소 루트여야 합니다. 상위 폴더의 저장소를 잘못 조작하지 않도록 상위 저장소는 거부합니다. 변경사항은 보관함 전체가 대상이므로 `.obsidian`, `.trash` 등 제외할 경로는 보관함의 `.gitignore`에 직접 지정하세요.
+백업 위치는 **보관함의 `.git/luggit-backups/conflict-*`**이며 완료/오류 알림에 전체 경로를 표시합니다. `metadata.json`에는 원래 경로와 버전별 파일명이 기록됩니다. `base.blob`은 기준, `ours.blob`과 `theirs.blob`은 Git의 양쪽 버전, `working.blob`은 적용 직전 파일의 원본 바이트입니다. 없는 버전은 null로 기록합니다. 복구할 버전을 원래 확장자를 가진 새 파일로 복사해 확인할 수 있습니다. rebase 중에는 ours/theirs가 내 기기/상대 기기를 뜻하지 않을 수 있습니다.
 
-### 개발 및 검증
+**백업은 자동 삭제하지 않으며 Git으로 동기화되지 않습니다.** 다른 기기에서도 보존하려면 별도로 복사하세요. `.git` 폴더를 삭제하면 이 백업도 사라집니다.
 
-이 폴더에서 실행합니다. 다른 폴더의 파일은 필요 없습니다.
+미리보기 후 파일이나 충돌 상태가 바뀌면 적용을 중단합니다. 적용 중에는 Git 인덱스 잠금을 사용합니다. 적용/스테이지 실패 시 백업은 남으며, 실제 인덱스에 부분적으로 적용하지 않습니다. 현재 문서를 확인한 후 다시 미리보기를 여세요.
 
-```sh
-npm ci
-npm run build
-npm test
-npm run test:ui
-```
+## License
 
-`src/` 수정 후 빌드하면 실행용 `main.js`가 만들어집니다(저장소에는 포함하지 않고 릴리즈에 첨부합니다). `npm run test:ui`는 숨긴 Electron 테스트 창에서 패널 배치·호버·diff·확인창 키보드 동작과, 미커밋 변경이 있어도 창이 그대로 닫히는지를 확인합니다. [요구사항 대조 기록](QA.md)에 적용 범위와 호스트 검증 한계를 정리했습니다.
-
-테스트는 임시 Git 저장소에서 스테이지·이름 변경·커밋·로컬 원격 Push·변경 버리기를 실행하고, 커밋 후 Push 재시도 흐름을 검증합니다. UI/보관함 API 대역을 사용한 검증과 실제 Obsidian에서의 검증은 다릅니다. 배포 전 실제 보관함의 복사본에서 동작을 확인하세요.
-
-API 참고: [Obsidian 공식 API](https://github.com/obsidianmd/obsidian-api), [플러그인 개발 안내](https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin).
-
-### 릴리즈
-
-```sh
-npm version patch   # 또는 minor / major. package.json, manifest.json, versions.json을 함께 올리고 태그를 만듭니다.
-git push --follow-tags
-```
-
-`v` 접두사 없는 버전 태그(예: `0.1.1`)가 올라가면 GitHub Actions가 빌드·테스트 후 `main.js`, `manifest.json`, `styles.css`를 첨부한 릴리즈를 만듭니다. 태그와 `manifest.json`의 버전이 다르면 실패합니다.
-
-### 라이선스
-
-[MIT](LICENSE). Git 로고는 별도 조건을 따릅니다([NOTICE.md](NOTICE.md)).
+[MIT](LICENSE). Git logo attribution and terms: [NOTICE.md](NOTICE.md).

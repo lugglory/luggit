@@ -1,20 +1,14 @@
 'use strict';
-const { Plugin, ItemView, MarkdownView, TextFileView, Modal, Notice, PluginSettingTab, Setting, FileSystemAdapter, addIcon, setIcon, setTooltip } = require('obsidian');
+const { Plugin, ItemView, TextFileView, Modal, Notice, PluginSettingTab, Setting, FileSystemAdapter, addIcon, setIcon, setTooltip } = require('obsidian');
 const { GitService } = require('./git-service');
-const { confirmAction } = require('./confirmation');
-const { ExitPushState } = require('./exit-state');
+const { ConflictService } = require('./conflicts');
+const { ConflictModal } = require('./conflict-modal');
 const { parseDiff, copyableDiff } = require('./diff');
 const VIEW = 'luggit-changes';
 const GIT_ICON = 'luggit-logo';
-const COMMIT_PUSH_ICON = 'luggit-commit-push';
-let toolbarSequence = 0;
 let sectionSequence = 0;
 
 function registerIcons() {
-  // Obsidian custom icons use a 100 × 100 viewBox. Draw on the same 24-unit
-  // grid as the surrounding Lucide controls to keep stroke weight consistent.
-  const wrap = content => `<g transform="scale(4.1666666667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${content}</g>`;
-  addIcon(COMMIT_PUSH_ICON, wrap('<path d="m7 8 5-5 5 5M12 3v9M4 18h5m6 0h5"/><circle cx="12" cy="18" r="3"/>'));
   /*! Git logomark by Jason Long, CC BY 3.0. https://git-scm.com/community/logos
    * Official SVG geometry; only scaled from 78 to 100 units and recolored for the host theme.
    * https://creativecommons.org/licenses/by/3.0/ */
@@ -105,72 +99,22 @@ class GitView extends ItemView {
   getIcon() { return GIT_ICON; }
   async onOpen() {
     this.contentEl.empty(); this.contentEl.addClass('luggit');
-    const toolbarLabel = 'luggit-toolbar-' + ++toolbarSequence;
-    const header = this.contentEl.createDiv({ cls: 'luggit-header', attr: { role: 'toolbar', 'aria-labelledby': toolbarLabel } });
-    header.createSpan({ text: 'Git 작업', attr: { id: toolbarLabel, hidden: '' } });
-    this.commitPushButton = iconButton(header, [COMMIT_PUSH_ICON], '커밋 후 Push', () => this.plugin.commit(true));
-    this.commitButton = iconButton(header, ['git-commit-horizontal'], '커밋', () => this.plugin.commit(false));
-    this.stageAllButton = iconButton(header, ['plus'], '모두 스테이지', () => this.plugin.perform('스테이지', () => this.plugin.git.stage()));
-    this.unstageAllButton = iconButton(header, ['minus'], '모두 스테이지 해제', () => this.plugin.perform('스테이지 해제', () => this.plugin.git.unstage()));
-    this.pushButton = iconButton(header, ['arrow-up-from-line'], 'Push · 커밋 올리기', () => this.plugin.perform('Push', () => this.plugin.push()));
-    this.pullButton = iconButton(header, ['arrow-down-to-line'], 'Pull · 원격 변경 가져오기', () => this.plugin.pullFromRemote());
     this.empty = this.contentEl.createDiv();
-    this.empty.createEl('p', { text: '이 보관함은 아직 Git 저장소가 아닙니다.' });
-    iconButton(this.empty, ['git-branch-plus'], '보관함에 Git 저장소 만들기', () => this.plugin.perform('초기화', () => this.plugin.git.init(), false));
+    this.empty.createEl('p', { text: '이 보관함은 아직 Git 저장소가 아닙니다. Obsidian Git이나 외부 Git 도구에서 저장소를 설정해 주세요.' });
     this.body = this.contentEl.createDiv();
-    this.message = this.body.createEl('textarea', { cls: 'luggit-message', placeholder: '커밋 메시지 (비우면 파일명 사용)', attr: { 'aria-label': '커밋 메시지', rows: '1' } });
-    this.message.value = this.plugin.draft;
-    this.message.oninput = () => { this.plugin.draft = this.message.value; this.resizeMessage(); };
-    this.messageObserver?.disconnect();
-    let width = 0;
-    this.messageObserver = new this.message.ownerDocument.defaultView.ResizeObserver(entries => {
-      const nextWidth = entries[0].contentRect.width;
-      if (nextWidth > 0 && nextWidth !== width) {
-        width = nextWidth;
-        const win = this.message.ownerDocument.defaultView;
-        win.cancelAnimationFrame(this.messageResizeFrame);
-        this.messageResizeFrame = win.requestAnimationFrame(() => this.resizeMessage());
-      }
-    });
-    this.messageObserver.observe(this.message);
-    this.message.onkeydown = event => {
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
-        event.preventDefault(); this.plugin.commit(false);
-      }
-    };
-    this.staged = this.section('스테이지됨', [
-      ['minus', '모두 스테이지 해제', () => this.plugin.perform('스테이지 해제', () => this.plugin.git.unstage())],
-    ]);
-    this.unstaged = this.section('변경됨', [
-      ['undo-2', '모두 버리기', () => this.plugin.discard()],
-      ['plus', '모두 스테이지', () => this.plugin.perform('스테이지', () => this.plugin.git.stage())],
-    ]);
-    this.recent = this.section('최근 변경한 파일', []);
+    this.staged = this.section('스테이지됨');
+    this.unstaged = this.section('변경됨');
+    this.recent = this.section('최근 변경한 파일');
     await this.plugin.refresh();
   }
-  onClose() {
-    this.messageObserver?.disconnect();
-    this.message?.ownerDocument.defaultView.cancelAnimationFrame(this.messageResizeFrame);
-  }
-  resizeMessage() {
-    if (!this.message?.getClientRects().length) return;
-    const css = this.message.ownerDocument.defaultView.getComputedStyle(this.message);
-    const border = parseFloat(css.borderTopWidth) + parseFloat(css.borderBottomWidth);
-    this.message.style.height = 'auto';
-    // An empty field stays one line even if its placeholder wraps in a narrow sidebar.
-    const height = this.message.value ? this.message.scrollHeight :
-      parseFloat(css.lineHeight) + parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
-    this.message.style.height = `${Math.ceil(height + border)}px`;
-  }
-  section(title, actions) {
+  onClose() {}
+  section(title) {
     const section = this.body.createDiv({ cls: 'luggit-section' });
     const header = section.createDiv({ cls: 'luggit-section-header' });
     const listId = 'luggit-section-' + ++sectionSequence;
     const toggle = header.createEl('button', { cls: 'luggit-section-toggle', attr: { type: 'button', 'aria-controls': listId } });
     const arrow = toggle.createSpan({ attr: { 'aria-hidden': 'true' } });
     const label = toggle.createSpan({ text: title, cls: 'luggit-section-label' });
-    const tools = actions.length ? header.createDiv({ cls: 'luggit-actions' }) : null;
-    const buttons = actions.map(([icon, name, action]) => iconButton(tools, [icon], name, action));
     const list = section.createDiv({ cls: 'luggit-list', attr: { id: listId } });
     const update = () => {
       const collapsed = this.collapsedSections.has(title);
@@ -184,32 +128,12 @@ class GitView extends ItemView {
       update();
     };
     update();
-    return { title, label, buttons, list, toggle };
+    return { title, label, list, toggle };
   }
   render(snapshot) {
     if (!this.body) return;
     this.empty.hidden = snapshot.repo; this.body.hidden = !snapshot.repo;
-    this.message.disabled = this.plugin.busy;
-    for (const button of this.contentEl.querySelectorAll('.luggit-icon')) button.disabled = this.plugin.busy;
-    for (const button of [this.stageAllButton, this.unstageAllButton, this.commitButton, this.pushButton, this.pullButton, this.commitPushButton]) {
-      button.disabled = this.plugin.busy || !snapshot.repo;
-      if (!snapshot.repo) button.removeClass('is-pending');
-    }
     if (!snapshot.repo) return;
-    this.stageAllButton.disabled = this.plugin.busy || !snapshot.files.some(file => file.unstaged);
-    this.unstageAllButton.disabled = this.plugin.busy || !snapshot.files.some(file => file.staged);
-    this.message.value = this.plugin.draft;
-    this.resizeMessage();
-    // Disable only what certainly cannot work: staging and committing depend on the
-    // file list alone. The ahead count is an estimate, so Push is highlighted but
-    // never disabled, and nothing is known about Pull before asking the remote.
-    const changed = snapshot.files.length > 0;
-    this.commitButton.disabled = this.plugin.busy || !changed;
-    this.commitButton.toggleClass('is-pending', changed);
-    // Commit and push falls through to a plain push, so it follows the Push rule.
-    this.commitPushButton.toggleClass('is-pending', changed || snapshot.ahead > 0);
-    this.pushButton.toggleClass('is-pending', snapshot.ahead > 0);
-    setTooltip(this.pushButton, `Push · 대기 커밋 ${snapshot.ahead}개`, { placement: 'bottom' });
     this.renderFiles(this.staged, snapshot.files.filter(file => file.staged), true);
     this.renderFiles(this.unstaged, snapshot.files.filter(file => file.unstaged), false);
     this.recent.list.empty();
@@ -222,26 +146,23 @@ class GitView extends ItemView {
   }
   renderFiles(section, files, staged) {
     section.label.setText(`${section.title} (${files.length})`);
-    for (const button of section.buttons) button.disabled = this.plugin.busy || !files.length;
     section.list.empty();
     if (!files.length) section.list.createDiv({ text: '없음', cls: 'luggit-muted' });
     for (const file of files) {
       const row = section.list.createDiv({ cls: 'luggit-file' });
       row.onclick = () => this.plugin.showDiff(file.path, staged);
-      const code = staged ? file.index : file.work;
+      const code = file.conflicted ? 'U' : staged ? file.index : file.work;
       const statusName = { M: '수정', A: '추가', D: '삭제', R: '이름 변경', C: '복사', U: '충돌', T: '유형 변경', '?': '추적 안 됨' }[code] || code;
       const status = row.createSpan({ text: code, cls: 'luggit-code', attr: { 'data-status': code, 'aria-label': statusName } });
       setTooltip(status, statusName);
       const link = row.createEl('a', { text: fileName(file.path), cls: 'luggit-path', attr: { href: '#' } });
       setTooltip(link, file.path + ' · diff 보기');
       link.onclick = event => event.preventDefault();
-      const tools = row.createDiv({ cls: 'luggit-actions' });
-      if (staged) iconButton(tools, ['minus'], '스테이지 해제', () => this.plugin.perform('스테이지 해제', () => this.plugin.git.unstage(file.path)));
-      else {
-        iconButton(tools, ['undo-2'], '변경 버리기', () => this.plugin.discard(file.path));
-        iconButton(tools, ['plus'], '스테이지', () => this.plugin.perform('스테이지', () => this.plugin.git.stage(file.path)));
+      if (file.conflicted) {
+        const tools = row.createDiv({ cls: 'luggit-actions' });
+        iconButton(tools, ['git-merge'], '내용 보존하며 충돌 해결', () => this.plugin.showConflict(file.path)).disabled = this.plugin.busy;
       }
-      for (const button of tools.querySelectorAll('button')) button.disabled = this.plugin.busy;
+
     }
   }
 }
@@ -250,12 +171,6 @@ class GitSettings extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
   display() {
     this.containerEl.empty();
-    new Setting(this.containerEl).setName('시작할 때 Pull').setDesc('원격 저장소가 있고 보관함에 변경사항이 없을 때만 가져옵니다.').addToggle(toggle => toggle.setValue(this.plugin.settings.autoPull).onChange(async value => {
-      this.plugin.settings.autoPull = value; await this.plugin.saveData(this.plugin.settings);
-    }));
-    new Setting(this.containerEl).setName('종료할 때 Push').setDesc('이미 만들어 둔 커밋만 최대 15초 동안 Push합니다. Obsidian의 종료 이벤트가 생략되면 실행되지 않을 수 있습니다.').addToggle(toggle => toggle.setValue(this.plugin.settings.autoPushOnExit).onChange(async value => {
-      this.plugin.settings.autoPushOnExit = value; await this.plugin.saveData(this.plugin.settings);
-    }));
     new Setting(this.containerEl).setName('Git 실행 파일').setDesc('git 또는 실행 파일의 절대 경로. 변경 후 플러그인을 다시 켜세요.').addText(input => input.setValue(this.plugin.settings.executable).onChange(async value => {
       this.plugin.settings.executable = value.trim() || 'git'; await this.plugin.saveData(this.plugin.settings);
     }));
@@ -266,49 +181,22 @@ module.exports = class LuggitPlugin extends Plugin {
   async onload() {
     if (!(this.app.vault.adapter instanceof FileSystemAdapter)) { new Notice('Luggit은 데스크톱 보관함에서 사용할 수 있습니다.'); return; }
     registerIcons();
-    this.settings = Object.assign({ autoPull: true, autoPushOnExit: true, executable: 'git' }, await this.loadData());
-    this.draft = ''; this.busy = false; this.lastRefreshError = ''; this.refreshId = 0;
+    const saved = await this.loadData();
+    this.settings = { executable: saved?.executable || 'git' };
+    this.busy = false; this.lastRefreshError = ''; this.refreshId = 0;
     const adapter = this.app.vault.adapter;
-    this.exitPushError = '';
-    try {
-      this.exitState = new ExitPushState(window.localStorage, adapter.getBasePath(), this.app.vault.configDir);
-      this.exitPushError = this.exitState.read();
-    } catch (error) {
-      new Notice('종료 Push 상태를 로컬 저장소에서 읽지 못했습니다: ' + error.message, 6000);
-    }
-    this.git = new GitService(adapter.getBasePath(), { executable: this.settings.executable, trash: async name => {
-      if (!(await adapter.trashSystem(name))) await adapter.trashLocal(name);
-    } });
+    this.git = new GitService(adapter.getBasePath(), { executable: this.settings.executable });
+    this.conflicts = new ConflictService(this.git);
     this.registerView(VIEW, leaf => new GitView(leaf, this));
     this.addRibbonIcon(GIT_ICON, 'Git 변경사항', () => this.openPanel());
     this.addCommand({ id: 'open-panel', name: 'Git 변경사항 패널 열기', callback: () => this.openPanel() });
-    this.addCommand({ id: 'save-stage-current', name: '현재 문서 저장 후 스테이지', editorCallback: (_editor, view) => {
-      if (view.file) this.perform('저장 및 스테이지', () => this.git.stage(view.file.path));
-    } });
-    this.addCommand({ id: 'save-stage-all', name: '모두 저장 후 스테이지', callback: () => this.perform('모두 스테이지', () => this.git.stage()) });
-    this.addCommand({ id: 'commit', name: '커밋', callback: () => this.commit(false) });
-    this.addCommand({ id: 'commit-and-push', name: '커밋 후 Push', callback: () => this.commit(true) });
-    this.addCommand({ id: 'pull', name: 'Pull', callback: () => this.pullFromRemote() });
-    this.addCommand({ id: 'push', name: 'Push', callback: () => this.perform('Push', () => this.push()) });
     this.addCommand({ id: 'refresh', name: '변경사항 새로고침', callback: () => this.refresh(false, true) });
     this.addSettingTab(new GitSettings(this.app, this));
     for (const name of ['modify', 'create', 'delete', 'rename']) this.registerEvent(this.app.vault.on(name, () => this.scheduleRefresh()));
     this.register(() => window.clearTimeout(this.refreshTimer));
     this.register(() => this.stopGitWatch?.());
     this.register(() => this.progressNotice?.hide());
-    this.registerEvent(this.app.workspace.on('quit', tasks => {
-      if (!this.settings.autoPushOnExit || this.busy) return;
-      tasks.add(() => this.pushOnExit());
-    }));
-    this.app.workspace.onLayoutReady(() => {
-      this.openPanel();
-      this.reportExitPush();
-      if (this.settings.autoPull) this.perform('자동 Pull', async () => {
-        const status = await this.git.status();
-        if (status.repo && !status.files.length && (await this.git.run(['remote'])).trim()) await this.git.pull();
-        else return false;
-      });
-    });
+    this.app.workspace.onLayoutReady(() => this.openPanel());
   }
   // Matches saved state too: a leaf kept across a plugin update is ours before its view is rebuilt.
   panelLeaves() {
@@ -328,12 +216,6 @@ module.exports = class LuggitPlugin extends Plugin {
     })();
   }
   scheduleRefresh() { window.clearTimeout(this.refreshTimer); this.refreshTimer = window.setTimeout(() => this.refresh(), 500); }
-  async pullFromRemote() {
-    return this.perform('Pull', async () => {
-      const status = await this.git.status();
-      if (status.repo && (await this.git.run(['remote'])).trim()) await this.git.pull();
-    });
-  }
   // A background tab holds a deferred placeholder until it is shown; its onOpen refreshes then.
   render() { for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) if (leaf.view instanceof GitView) leaf.view.render(this.snapshot || { repo: false, files: [] }); }
   async refresh(force = false, notify = false) {
@@ -377,48 +259,25 @@ module.exports = class LuggitPlugin extends Plugin {
     finally { progress.hide(); this.progressNotice = null; this.busy = false; await this.refresh(); }
   }
   fail(error) { new Notice(error.message, 6000); this.render(); }
-  recordExitPushError(message) {
-    this.exitPushError = message;
-    try { this.exitState.write(message); }
-    catch (error) { new Notice('종료 Push 상태를 로컬에 저장하지 못했습니다: ' + error.message, 6000); }
+  async showConflict(name) {
+    return this.perform('충돌 미리보기', async () => {
+      const preview = await this.conflicts.preview(name);
+      new ConflictModal(this.app, preview, (apply) => this.resolveConflict(preview, apply)).open();
+      return false;
+    });
   }
-  // The window closes right after an exit push, so clearing the marker may never
-  // reach the disk. Trust the repository instead: nothing waiting means it was pushed.
-  async reportExitPush() {
-    if (!this.exitPushError) return;
-    try {
-      const status = await this.git.status();
-      if (status.repo && !status.ahead) { this.recordExitPushError(''); return; }
-    } catch { /* Report the stored failure below. */ }
-    new Notice('지난 종료 Push: ' + this.exitPushError + '\nPush 버튼으로 다시 시도하세요.', 8000);
-  }
-  async pushOnExit() {
-    try {
-      const status = await this.git.status();
-      if (!status.repo || !status.ahead) return;
-      this.recordExitPushError('Push 완료를 확인하지 못했습니다.');
-      await this.git.pushOnExit();
-      this.recordExitPushError('');
-    } catch (error) { this.recordExitPushError(error.message); }
-  }
-  async push() {
-    await this.git.push();
-    this.recordExitPushError('');
-  }
-  async commit(push) {
-    return this.perform(push ? '커밋 후 Push' : '커밋', async () => {
-      let committed = true;
-      try { await this.git.commit(this.draft); this.draft = ''; }
-      catch (error) {
-        // Having nothing to commit is no reason to skip the push. Real failures still stop here.
-        if (!push || !error.nothingToCommit) throw error;
-        committed = false;
-      }
-      if (push) {
-        try { await this.push(); }
-        catch (error) { throw new Error((committed ? '커밋은 완료됐지만 ' : '') + 'Push에 실패했습니다. Push 버튼으로 다시 시도하세요.\n' + error.message); }
-        if (!committed) { new Notice('커밋할 변경이 없어 Push만 했습니다.', 1500); return false; }
-      }
+  async resolveConflict(preview, apply) {
+    return this.perform(apply ? '내용 보존 병합' : '충돌 원본 백업', async () => {
+      const write = async (before, after) => {
+        const file = this.app.vault.getFileByPath(preview.name);
+        if (!file) throw new Error('파일을 찾을 수 없습니다. 목록을 새로고침해 주세요.');
+        await this.app.vault.process(file, current => {
+          if (current !== before) throw new Error('미리보기 후 문서가 변경되었습니다. 다시 확인해 주세요.');
+          return after;
+        });
+      };
+      const backup = await this.conflicts.resolve(preview, apply, write);
+      new Notice('충돌 원본 백업: ' + backup, 12000);
     });
   }
   async showDiff(name, staged) {
@@ -442,31 +301,5 @@ module.exports = class LuggitPlugin extends Plugin {
         this.app.vault.getFileByPath(name) ? () => this.openFile(name) : null,
         '최근 변경 커밋 · ' + commit.slice(0, 7)).open();
     } catch (error) { this.fail(error); }
-  }
-  async discard(name) {
-    return this.perform('변경 버리기', async () => {
-      const status = await this.git.status();
-      const files = status.files.filter(file => file.unstaged && (!name || file.path === name));
-      if (!files.length) return false;
-      const views = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
-        .filter(view => view instanceof MarkdownView && files.some(file => file.path === view.file?.path))
-        .map(view => ({ view, file: view.file, content: view.editor.getValue() }));
-      const message = `${name || files.length + '개 파일'}의 스테이지되지 않은 변경을 버릴까요? 새 파일은 휴지통으로 보냅니다.`;
-      if (!(await confirmAction(this.app, { title: '변경 버리기', message, confirmLabel: name ? '변경 버리기' : '모두 버리기' }))) return false;
-      for (const item of views) if (item.view.file !== item.file || item.view.editor.getValue() !== item.content) throw new Error('확인 중 문서가 변경되어 취소했습니다.');
-      const current = (await this.git.status()).files.filter(file => file.unstaged && (!name || file.path === name));
-      if (JSON.stringify(files) !== JSON.stringify(current)) throw new Error('Git 상태가 변경되었습니다. 다시 확인해 주세요.');
-      for (const file of files) {
-        await this.git.discard(file.path);
-        for (const item of views.filter(item => item.file.path === file.path)) {
-          if (item.view.file !== item.file || item.view.editor.getValue() !== item.content) continue;
-          if (file.index === '?') item.view.leaf.detach();
-          else {
-            const data = await this.app.vault.read(item.file);
-            if (item.view.file === item.file && item.view.editor.getValue() === item.content) item.view.setViewData(data, false);
-          }
-        }
-      }
-    });
   }
 };

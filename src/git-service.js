@@ -3,7 +3,6 @@ const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const syncFs = require('node:fs');
 const path = require('node:path');
-const { pushOnExit } = require('./shutdown-sync');
 
 function parseStatus(output) {
   const records = output.split('\0'), files = [];
@@ -24,7 +23,7 @@ function parseStatusV2(output) {
   const records = output.split('\0'), files = [], branch = { head: true, name: '', upstream: '', ahead: null };
   const entry = (xy, path, originalPath = null) => {
     const index = xy[0] === '.' ? ' ' : xy[0], work = xy[1] === '.' ? ' ' : xy[1];
-    files.push({ path, originalPath, index, work, staged: index !== ' ' && index !== '?', unstaged: work !== ' ' || index === '?' });
+    files.push({ path, originalPath, index, work, ...(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(index + work) ? { conflicted: true } : {}), staged: index !== ' ' && index !== '?', unstaged: work !== ' ' || index === '?' });
   };
   // Paths may contain spaces, so only the fixed number of leading fields is split off.
   const pathAfter = (record, fields) => record.split(' ').slice(fields).join(' ');
@@ -42,23 +41,10 @@ function parseStatusV2(output) {
   return { files, branch };
 }
 
-function parseStats(output) {
-  const records = output.split('\0'), stats = [];
-  for (let i = 0; i < records.length; i++) {
-    const match = /^(\S+)\t(\S+)\t(.*)$/s.exec(records[i]);
-    if (!match) continue;
-    let name = match[3];
-    if (!name) { name = records[i + 2]; i += 2; }
-    if (name) stats.push({ path: name, lines: (Number(match[1]) || 0) + (Number(match[2]) || 0) });
-  }
-  return stats;
-}
-
 class GitService {
-  constructor(root, { executable = 'git', trash } = {}) {
+  constructor(root, { executable = 'git' } = {}) {
     this.root = path.resolve(root);
     this.executable = executable;
-    this.trash = trash;
   }
   run(args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -68,7 +54,7 @@ class GitService {
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' },
         ...options,
       }, (error, stdout, stderr) => {
-        if (error) { error.message = (stderr || error.message).trim(); reject(error); }
+        if (error) { error.message = (stderr?.length ? stderr.toString() : error.message).trim(); reject(error); }
         else resolve(stdout);
       });
     });
@@ -106,10 +92,6 @@ class GitService {
     for (const watcher of watchers) watcher.on('error', () => watcher.close());
     return () => { for (const watcher of watchers) watcher.close(); };
   }
-  async pushOnExit() {
-    if (!(await this.isRepo())) return false;
-    return pushOnExit((args, options) => this.run(args, options));
-  }
   async isRepo() {
     let root;
     try { root = (await this.run(['rev-parse', '--show-toplevel'])).trim(); }
@@ -137,28 +119,7 @@ class GitService {
     if (!(await this.isRepo())) return { repo: false, files: [], branch: '', ahead: 0 };
     // Background refreshes must not rewrite .git/index, or the folder watcher would retrigger them.
     const { files, branch } = parseStatusV2(await this.run(['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']));
-    let ahead = branch.ahead ?? 0;
-    // Without a usable upstream, count the commits that no remote has yet.
-    if (branch.ahead === null && branch.head && (await this.run(['remote'])).trim()) {
-      ahead = Number(await this.run(['rev-list', '--count', 'HEAD', '--not', '--remotes'])) || 0;
-    }
-    return { repo: true, files, branch: branch.head ? branch.name : '(커밋 없음)', ahead, head: branch.head };
-  }
-  async init() {
-    // Refuse inherited repositories here as well.
-    if (!(await this.isRepo())) await this.run(['init']);
-  }
-  async stage(name = '.') {
-    await this.requireRepo();
-    await this.run(['--literal-pathspecs', 'add', '-A', '--', this.validatePath(name)]);
-  }
-  async unstage(name = '.') {
-    await this.requireRepo(); this.validatePath(name);
-    const files = parseStatus(await this.run(['status', '--porcelain=v1', '-z', '--untracked-files=no']));
-    const renamed = files.find(file => file.path === name && file.index === 'R');
-    const paths = renamed?.originalPath ? [name, renamed.originalPath] : [name];
-    if (await this.hasHead()) await this.run(['--literal-pathspecs', 'reset', '-q', 'HEAD', '--', ...paths]);
-    else await this.run(['--literal-pathspecs', 'rm', '--cached', '-r', '-q', '--', ...paths]);
+    return { repo: true, files, branch: branch.head ? branch.name : '(커밋 없음)', head: branch.head };
   }
   async diff(name, staged) {
     await this.requireRepo(); this.validatePath(name);
@@ -178,29 +139,6 @@ class GitService {
     const lines = content.toString('utf8').split('\n');
     if (lines.at(-1) === '') lines.pop();
     return lines.map(line => '+' + line).join('\n');
-  }
-  async discard(name) {
-    await this.requireRepo(); this.validatePath(name);
-    const files = parseStatus(await this.run(['status', '--porcelain=v1', '-z', '--untracked-files=all']));
-    const file = files.find(item => item.path === name);
-    if (!file?.unstaged) return;
-    if (file.index === 'U' || file.work === 'U' || ['AA', 'DD'].includes(file.index + file.work)) throw new Error('충돌 파일은 외부 Git 도구에서 해결해 주세요.');
-    if (file.index === '?') {
-      if (!this.trash) throw new Error('휴지통을 사용할 수 없습니다.');
-      await this.trash(name);
-    } else {
-      await this.run(['--literal-pathspecs', 'checkout', '--', name]);
-    }
-  }
-  async commit(message) {
-    await this.requireRepo();
-    let stats = parseStats(await this.run(['diff', '--cached', '--numstat', '-z']));
-    if (!stats.length) { await this.stage(); stats = parseStats(await this.run(['diff', '--cached', '--numstat', '-z'])); }
-    if (!stats.length) throw Object.assign(new Error('커밋할 변경이 없습니다.'), { nothingToCommit: true });
-    stats.sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path));
-    const title = message.trim() || stats[0].path.split('/').pop() + (stats.length > 1 ? ' 등' : '');
-    await this.run(['commit', '-m', title]);
-    return title;
   }
   // Pass the head flag of a status() result to skip repeating its repository checks.
   async recentFiles(head) {
@@ -223,22 +161,6 @@ class GitService {
       '--no-renames', '--no-ext-diff', '--no-textconv', '--no-color', commit, '--', name]);
     return { commit, diff };
   }
-  async pull() {
-    await this.requireRepo();
-    if ((await this.status()).files.length) throw new Error('Pull 전에 변경사항을 커밋하거나 정리해 주세요.');
-    return this.run(['pull', '--ff-only']);
-  }
-  async push() {
-    await this.requireRepo();
-    try { return await this.run(['push']); }
-    catch (error) {
-      if (!/no upstream|has no upstream|set-upstream/i.test(error.message)) throw error;
-      const branch = (await this.run(['symbolic-ref', '--short', 'HEAD'])).trim();
-      const remotes = (await this.run(['remote'])).trim().split('\n').filter(Boolean);
-      const remote = remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : null;
-      if (!remote) throw new Error('원격 저장소와 upstream을 먼저 설정해 주세요.');
-      return this.run(['push', '--set-upstream', remote, branch]);
-    }
-  }
+
 }
-module.exports = { GitService, parseStatus, parseStatusV2, parseStats };
+module.exports = { GitService, parseStatus, parseStatusV2 };

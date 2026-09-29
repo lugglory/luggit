@@ -1,20 +1,13 @@
-/* Obsidian shares one notice area; keep it clear of the sidebar toolbar. */
-body .notice-container { top: auto; bottom: max(36px, env(safe-area-inset-bottom)); max-height: 50vh; overflow-y: auto; }
 .luggit { padding: 12px; font-size: var(--font-ui-small); }
-.luggit-header, .luggit-section-header, .luggit-file { display: flex; align-items: center; gap: 8px; }
+.luggit-section-header, .luggit-file { display: flex; align-items: center; gap: 8px; }
 .luggit-section-header { justify-content: space-between; }
-.luggit-header { justify-content: center; gap: 0; margin-bottom: 4px; flex-wrap: wrap; }
 .luggit-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .luggit-icon, .luggit .luggit-icon { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 5px 7px; min-width: 28px; height: 28px; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); }
 .luggit-icon span { display: inline-flex; pointer-events: none; }
 .luggit-icon svg { width: 16px; height: 16px; }
 .luggit-icon:not(:disabled):hover, .luggit .luggit-icon:not(:disabled):hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-.luggit .luggit-icon.is-pending { color: var(--text-accent, var(--interactive-accent)); }
-.luggit .luggit-icon.is-pending:not(:disabled):hover { color: var(--text-accent, var(--interactive-accent)); background: var(--background-modifier-hover); }
 .luggit-icon:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
 .luggit-icon:disabled { opacity: 0.4; }
-.luggit .luggit-message { display: block; box-sizing: border-box; width: 100%; min-height: 0; height: auto; padding: 5px 8px; font: inherit; line-height: 1.4; resize: none; overflow: hidden; margin: 4px 0; }
-.luggit .luggit-header .luggit-icon { min-width: 32px; height: 30px; }
 .luggit-section { border: 0; padding: 0; margin-top: 6px; }
 .luggit-section-header { min-height: 28px; font-weight: 600; margin-inline: -2px; padding-inline: 2px; border-radius: 4px; }
 .luggit-section-header:hover, .luggit-section-header:focus-within { background: var(--background-modifier-hover); }
@@ -75,3 +68,7 @@ body .notice-container { top: auto; bottom: max(36px, env(safe-area-inset-bottom
 .luggit-diff-table .is-removed .luggit-diff-sign { color: var(--text-error, #e27878); }
 .luggit-diff-table .is-hunk td { padding: 8px 12px; font-family: var(--font-interface); font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-secondary, #292929); border-block: 1px solid var(--background-modifier-border); }
 .luggit-diff-empty { padding: 36px 16px; text-align: center; color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: 8px; }
+.luggit-conflict-modal { width: min(900px, 92vw); max-height: 90vh; }
+.luggit-conflict-modal .modal-content { overflow-y: auto; }
+.luggit-conflict-preview { max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--background-secondary); user-select: text; }
+.luggit-conflict-modal .modal-button-container { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }

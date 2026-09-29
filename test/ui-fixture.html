@@ -33,6 +33,7 @@ HTMLElement.prototype.toggleClass = function(name, value) { this.classList.toggl
 HTMLElement.prototype.setText = function(text) { this.textContent = text; };
 HTMLElement.prototype.isShown = function() { return this.getClientRects().length > 0 && getComputedStyle(this).display !== 'none'; };
 const iconPaths = {
+  'git-merge': '<circle cx="6" cy="3" r="3"/><path d="M6 6v12M6 6c0 6 12 6 12 12"/><circle cx="6" cy="21" r="3"/><circle cx="18" cy="21" r="3"/>',
   'git-commit-horizontal': '<circle cx="12" cy="12" r="3"/><path d="M3 12h6m6 0h6"/>',
   'arrow-up-from-line': '<path d="m7 8 5-5 5 5M12 3v12M5 21h14"/>',
   'arrow-down-to-line': '<path d="m7 10 5 5 5-5M12 3v12M5 21h14"/>',
@@ -48,7 +49,7 @@ const iconPaths = {
   'arrow-up-to-line': '<path d="M4 3h16M12 21V9m-5 5 5-5 5 5"/>',
 };
 const obsidian = {
-  Plugin: class { async loadData() { return {}; } registerView(type, factory) { this.factory = factory; } addRibbonIcon(name) { obsidian.setIcon(document.querySelector('#fixture-chrome').createSpan(), name); } addCommand(command) { (this.commands ||= []).push(command); } addSettingTab() {} registerEvent() {} registerDomEvent(el, event, handler, options) { el.addEventListener(event, handler, options); this.register(() => el.removeEventListener(event, handler, options)); } registerInterval(id) { clearInterval(id); } register(callback) { (this.cleanups ||= []).push(callback); } },
+  Plugin: class { async loadData() { return { autoPull: true, autoPushOnExit: true }; } registerView(type, factory) { this.factory = factory; } addRibbonIcon(name) { obsidian.setIcon(document.querySelector('#fixture-chrome').createSpan(), name); } addCommand(command) { (this.commands ||= []).push(command); } addSettingTab() {} registerEvent() {} registerDomEvent(el, event, handler, options) { el.addEventListener(event, handler, options); this.register(() => el.removeEventListener(event, handler, options)); } registerInterval(id) { clearInterval(id); } register(callback) { (this.cleanups ||= []).push(callback); } },
   ItemView: class { constructor(leaf) { this.leaf = leaf; this.contentEl = document.body.createDiv(); } },
   Modal: class {
     constructor() { this.containerEl = document.createElement('div'); this.containerEl.className = 'modal-container'; this.modalEl = this.containerEl.createDiv({ cls: 'modal' }); this.titleEl = this.modalEl.createEl('h3', { cls: 'modal-title' }); this.contentEl = this.modalEl.createDiv({ cls: 'modal-content' }); const close = this.modalEl.createEl('button', { cls: 'modal-close-button', text: '×', attr: { 'aria-label': '닫기' } }); close.onclick = () => this.close(); }
@@ -68,131 +69,66 @@ async function runTest() {
   const output = { exports: {} };
   const filename = path.join(__dirname, '../main.js');
   new Function('require', 'module', fs.readFileSync(filename, 'utf8'))(name => name === 'obsidian' ? obsidian : require(name), output);
-  const plugin = window.gitPlugin = new output.exports(); const leaves = [], calls = [];
-  plugin.app = { vault: { adapter: new obsidian.FileSystemAdapter(), on() {} }, workspace: { on(name, callback) { gitWorkspaceEvents.set(name, callback); }, onLayoutReady() {}, getLeavesOfType() { return leaves; }, iterateAllLeaves() {} } };
+  const plugin = window.gitPlugin = new output.exports(), leaves = [];
+  plugin.app = { vault: { adapter: new obsidian.FileSystemAdapter(), on() {} }, workspace: {
+    on(name, callback) { gitWorkspaceEvents.set(name, callback); }, onLayoutReady(callback) { this.layoutReady = callback; },
+    getLeavesOfType() { return leaves; }, iterateAllLeaves() {} } };
   await plugin.onload();
+  let opened = 0;
+  const openPanel = plugin.openPanel;
+  plugin.openPanel = () => { opened++; };
+  plugin.app.workspace.layoutReady(); plugin.openPanel = openPanel;
   plugin.git = {
-    async status() { return { repo: true, branch: 'obsidian-plugin', ahead: 2, files: [
+    async status() { return { repo: true, head: true, files: [
       { path: '회의/제품 아이디어.md', index: 'M', work: ' ', staged: true },
       { path: '오늘의 메모.md', index: ' ', work: 'M', unstaged: true },
       { path: '아주 긴 폴더 이름/오른쪽 문서 패널에 보낼 내용.md', index: '?', work: '?', unstaged: true },
+      { path: '충돌한 메모.md', index: 'U', work: 'U', staged: true, unstaged: true, conflicted: true },
     ] }; },
     watch() { return null; },
     async recentFiles() { return ['회의/제품 아이디어.md', '리서치/읽을거리.md', '기록/삭제된 메모.md']; },
-    async commit(message) { calls.push('commit:' + message); }, async push() { calls.push('push'); },
   };
   const leaf = {}; leaf.view = plugin.factory(leaf); leaves.push(leaf); await leaf.view.onOpen();
   obsidian.setIcon(document.querySelector('#fixture-chrome').createSpan(), leaf.view.getIcon());
   document.querySelector('#fixture-chrome').createSpan({ text: 'Git 변경사항' });
-  const buttons = [...document.querySelectorAll('.luggit-icon')];
-  const iconOnly = buttons.every(button => !button.textContent.trim() && button.querySelector('svg') && button.getAttribute('aria-label') && button.dataset.tooltip && !button.hasAttribute('title'));
-  const combined = document.querySelector('[aria-label="커밋 후 Push"]');
-  const combinedIcons = combined.querySelectorAll('svg').length;
-  const pending = combined.classList.contains('is-pending');
-  const message = leaf.view.message, messageHeight = () => message.getBoundingClientRect().height;
-  const typeMessage = value => { message.value = value; message.dispatchEvent(new Event('input')); return messageHeight(); };
-  const initialHeight = messageHeight();
-  const multilineHeight = typeMessage('첫 줄\n두 번째 줄\n세 번째 줄');
-  const wrappedHeight = typeMessage('자동 줄바꿈에 따라 입력창 높이가 조정됩니다. '.repeat(8));
-  const wideHeight = messageHeight();
-  message.style.width = '180px';
-  for (let frame = 0; frame < 10 && messageHeight() <= wideHeight; frame++) {
-    await new Promise(resolve => requestAnimationFrame(resolve));
+  const sectionStates = [];
+  for (const toggle of document.querySelectorAll('.luggit-section-toggle')) {
+    toggle.click(); await plugin.refresh();
+    sectionStates.push(toggle.getAttribute('aria-expanded') === 'false' && document.getElementById(toggle.getAttribute('aria-controls')).hidden);
+    toggle.click();
   }
-  const narrowHeight = messageHeight();
-  message.style.width = '';
-  const clearedHeight = typeMessage('');
-  const messageSizing = { initialHeight, multilineHeight, wrappedHeight, wideHeight, narrowHeight, clearedHeight };
-  leaf.view.message.value = '테스트 커밋'; leaf.view.message.dispatchEvent(new Event('input'));
-  combined.click();
-  await new Promise(resolve => setTimeout(resolve, 50));
-  const toolbarAtTop = combined.closest('.luggit-header')?.getBoundingClientRect().bottom <= leaf.view.message.getBoundingClientRect().top;
-  const noInlineStatus = !document.querySelector('.luggit-branch, .luggit-status');
-  const sectionActions = [...document.querySelectorAll('.luggit-section-header')].slice(0, 2).map(header => [...header.querySelectorAll('.luggit-actions button')].map(button => button.getAttribute('aria-label')));
-  const topActions = [...document.querySelectorAll('.luggit-header button')].map(button => button.getAttribute('aria-label'));
-  const toolbar = document.querySelector('.luggit-header');
-  const toolbarNamedWithoutTooltip = !toolbar.hasAttribute('aria-label') && !toolbar.hasAttribute('title') &&
-    document.getElementById(toolbar.getAttribute('aria-labelledby'))?.textContent === 'Git 작업';
-  let refreshClicks = 0;
-  const pullFromRemote = plugin.pullFromRemote;
-  plugin.pullFromRemote = () => { refreshClicks++; };
-  toolbar.querySelector('[aria-label="Pull · 원격 변경 가져오기"]').click();
-  plugin.pullFromRemote = pullFromRemote;
-  messageSizing.afterCommit = messageHeight();
-  return { iconOnly, combinedIcons, calls, pending, toolbarAtTop, noInlineStatus, sectionActions, topActions, toolbarNamedWithoutTooltip, refreshClicks, notices, messageSizing, overflow: document.documentElement.scrollWidth > innerWidth };
+  const controls = [...document.querySelectorAll('.luggit-icon')];
+  return { commands: plugin.commands.map(c => c.id), quitRegistered: gitWorkspaceEvents.has('quit'), opened,
+    legacyIgnored: !('autoPull' in plugin.settings) && !('autoPushOnExit' in plugin.settings),
+    sectionStates, titles: [...document.querySelectorAll('.luggit-section-label')].map(el => el.textContent),
+    controls: controls.map(el => el.getAttribute('aria-label')),
+    iconOnly: controls.every(el => !el.textContent.trim() && el.querySelector('svg')),
+    noCommitInput: !document.querySelector('textarea'), noToolbar: !document.querySelector('.luggit-header'),
+    overflow: document.documentElement.scrollWidth > innerWidth };
 }
-async function runSectionTest() {
-  const hostButtonStyle = document.head.createEl('style', { text: 'button { justify-content: center; }' });
-  const view = gitPlugin.app.workspace.getLeavesOfType('luggit-changes')[0].view;
-  const states = [];
-  for (const section of [view.staged, view.unstaged, view.recent]) {
-    section.toggle.click();
-    const collapsed = section.list.hidden && section.toggle.getAttribute('aria-expanded') === 'false';
-    view.render(gitPlugin.snapshot);
-    const stayedCollapsed = section.list.hidden && getComputedStyle(section.list).display === 'none';
-    section.toggle.click();
-    states.push({ collapsed, stayedCollapsed, reopened: !section.list.hidden && section.toggle.getAttribute('aria-expanded') === 'true',
-      controlsList: section.toggle.getAttribute('aria-controls') === section.list.id });
-  }
-  const headerButtons = view.unstaged.buttons;
-  const rowButtons = [...view.unstaged.list.querySelector('.luggit-actions').children];
-  const rects = headerButtons.map((button, index) => {
-    const header = button.getBoundingClientRect(), row = rowButtons[index].getBoundingClientRect();
-    return { width: header.width, rowWidth: row.width, centerOffset: (header.left + header.right - row.left - row.right) / 2 };
-  });
-  const plus = headerButtons[1].getBoundingClientRect(), rowPlus = rowButtons[1].getBoundingClientRect();
-  const edgeTarget = document.elementFromPoint(rowPlus.left - 1, plus.top + plus.height / 2)?.closest('button');
-  const events = [], perform = gitPlugin.perform;
-  gitPlugin.perform = label => events.push(label);
-  edgeTarget?.click();
-  gitPlugin.perform = perform;
-  const toggle = view.unstaged.toggle, toggleRect = toggle.getBoundingClientRect();
-  const titleLeftAligned = getComputedStyle(toggle).justifyContent === 'flex-start' && Math.abs(toggle.firstElementChild.getBoundingClientRect().left - toggleRect.left) < 1;
-  const headerRect = toggle.parentElement.getBoundingClientRect();
-  const headerCoversActions = headerRect.right >= plus.right && headerRect.left <= headerButtons[0].getBoundingClientRect().left;
-  const childIndent = view.unstaged.list.firstElementChild.getBoundingClientRect().left - toggleRect.left;
-  hostButtonStyle.remove();
-  return { states, rects, expandedHitArea: edgeTarget === headerButtons[1], actions: events, actionDidNotCollapse: !view.unstaged.list.hidden,
-    titleLeftAligned, headerCoversActions, childIndent };
-}
-function runButtonStateTest() {
-  const view = gitPlugin.app.workspace.getLeavesOfType()[0].view;
-  const state = button => (button.disabled ? 'disabled' : 'enabled') + (button.classList.contains('is-pending') ? '+highlight' : '');
-  const read = snapshot => {
-    view.render({ repo: true, recent: [], ...snapshot });
-    return { commitPush: state(view.commitPushButton), commit: state(view.commitButton), stage: state(view.stageAllButton),
-      unstage: state(view.unstageAllButton), push: state(view.pushButton), pull: state(view.pullButton) };
-  };
-  const result = {
-    clean: read({ files: [], ahead: 0 }),
-    waiting: read({ files: [], ahead: 2 }),
-    changed: read({ files: [{ path: 'a.md', index: ' ', work: 'M', staged: false, unstaged: true }], ahead: 0 }),
-    staged: read({ files: [{ path: 'a.md', index: 'M', work: ' ', staged: true, unstaged: false }], ahead: 0 }),
-  };
-  gitPlugin.render();
+async function runConflictTest() {
+  const preview = { name: '충돌한 메모.md', result: '공통 내용\n내 메모\n상대 메모\n', count: 1, reason: '' };
+  const calls = [];
+  gitPlugin.conflicts = { preview: async () => preview };
+  const original = gitPlugin.resolveConflict;
+  gitPlugin.resolveConflict = async (value, apply) => calls.push({ name: value.name, apply });
+  await gitPlugin.showConflict(preview.name);
+  const first = lastModal;
+  const labels = [...first.contentEl.querySelectorAll('button')].map(el => el.textContent);
+  const result = { labels, text: first.contentEl.querySelector('pre').textContent, focus: document.activeElement.textContent };
+  first.modalEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  result.cancelled = calls.length === 0;
+  await gitPlugin.showConflict(preview.name);
+  [...lastModal.contentEl.querySelectorAll('button')].find(el => el.textContent === '적용하고 해결로 표시').click();
+  preview.result = null; preview.reason = 'YAML 충돌은 직접 검토해 주세요.';
+  await gitPlugin.showConflict(preview.name);
+  result.backupOnly = !lastModal.contentEl.querySelector('pre') && !lastModal.contentEl.textContent.includes('적용하고 해결로 표시');
+  [...lastModal.contentEl.querySelectorAll('button')].find(el => el.textContent === '원본만 백업').click();
+  result.calls = calls;
+  preview.result = '공통 내용\n내 메모\n상대 메모\n'; preview.reason = '';
+  await gitPlugin.showConflict(preview.name);
+  gitPlugin.resolveConflict = original;
   return result;
-}
-async function runPanelFocusTest() {
-  const plugin = gitPlugin, leaf = plugin.app.workspace.getLeavesOfType()[0], view = leaf.view;
-  const refresh = plugin.refresh, remote = plugin.pullFromRemote;
-  let refreshes = 0, pulls = 0;
-  plugin.refresh = async () => { refreshes++; };
-  plugin.pullFromRemote = async () => { pulls++; };
-  const enter = relatedTarget => view.message.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget }));
-  const hover = () => view.contentEl.dispatchEvent(new MouseEvent('mouseenter'));
-  enter(document.body);
-  hover();
-  await new Promise(resolve => setTimeout(resolve, 550));
-  const afterEntry = refreshes;
-  enter(view.commitButton);
-  view.commitButton.dispatchEvent(new MouseEvent('mouseenter'));
-  view.message.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
-  await new Promise(resolve => setTimeout(resolve, 550));
-  const afterInternal = refreshes;
-  plugin.scheduleRefresh(); plugin.scheduleRefresh();
-  await new Promise(resolve => setTimeout(resolve, 550));
-  plugin.refresh = refresh; plugin.pullFromRemote = remote;
-  return { afterEntry, afterInternal, afterFileChanges: refreshes, pulls, gap: getComputedStyle(view.contentEl.querySelector('.luggit-header')).columnGap };
 }
 async function runPanelOpenTest() {
   const workspace = gitPlugin.app.workspace, original = { ...workspace }, revealed = [];
@@ -257,29 +193,6 @@ async function runRecentDiffTest() {
   }
   if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else delete navigator.clipboard;
   return { queries, opened, results, copied };
-}
-async function runConfirmationTest() {
-  const discarded = []; const plugin = gitPlugin;
-  plugin.git.status = async () => ({ repo: true, files: [{ path: 'test.md', index: ' ', work: 'M', unstaged: true }], ahead: 0 });
-  plugin.git.discard = async name => discarded.push(name);
-  let alignment = false, labels = [];
-  for (const key of ['Enter', ' ', 'Escape', 'cancel', 'repeat']) {
-    const operation = plugin.discard('test.md');
-    await new Promise(resolve => setTimeout(resolve, 20));
-    const modal = document.querySelector('.modal'), actions = modal.querySelector('.luggit-confirm-actions'), buttons = [...actions.querySelectorAll('button')];
-    labels = buttons.map(button => button.textContent);
-    alignment = getComputedStyle(actions).justifyContent === 'flex-end' && Math.abs(buttons[1].getBoundingClientRect().right - actions.getBoundingClientRect().right) < 2;
-    if (key === 'cancel') buttons[0].click();
-    else if (key === 'repeat') {
-      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, repeat: true }));
-      if (!document.querySelector('.modal')) throw new Error('Repeated key approved the modal');
-      buttons[0].click();
-    } else document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-    await operation;
-  }
-  window.previewConfirmation = plugin.discard('test.md');
-  await new Promise(resolve => setTimeout(resolve, 20));
-  return { discarded, alignment, labels, focused: document.activeElement.textContent };
 }
 async function runDiffTest() {
   document.body.style.userSelect = 'none'; // Match the host's otherwise non-selectable app UI.

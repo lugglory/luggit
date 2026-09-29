@@ -18,72 +18,12 @@ function plugin() {
   };
   const Plugin = load(filename);
   const result = new Plugin();
-  result.render = () => {}; result.refresh = async () => {}; result.draft = 'title'; result.refreshId = 0;
+  result.render = () => {}; result.refresh = async () => {}; result.refreshId = 0;
   result.saveOpenViews = async () => {}; result.app = { vault: { configDir: '.obsidian' } };
-  result.exitState = { message: '', write(message) { this.message = message; } };
   result.saveData = async () => { throw new Error('Git operations must not write plugin settings'); };
   return { plugin: result, notices };
 }
 
-test('exit push marks pending locally, stores failure, and clears on successful retry', async () => {
-  const { plugin: p } = plugin();
-  p.git = { status: async () => ({ repo: true, ahead: 1 }), pushOnExit: async () => {
-    assert.match(p.exitState.message, /완료/);
-    throw new Error('offline');
-  } };
-  await p.pushOnExit();
-  assert.equal(p.exitState.message, 'offline');
-  assert.equal(p.exitPushError, 'offline');
-  p.git.push = async () => {};
-  await p.push();
-  assert.equal(p.exitState.message, '');
-  assert.equal(p.exitPushError, '');
-});
-
-test('successful exit push clears local state without writing settings', async () => {
-  const { plugin: p } = plugin();
-  p.git = { status: async () => ({ repo: true, ahead: 1 }), pushOnExit: async () => {} };
-  await p.pushOnExit();
-  assert.equal(p.exitState.message, '');
-  assert.equal(p.exitPushError, '');
-});
-
-test('local storage failure does not prevent pushing commits', async () => {
-  const { plugin: p, notices } = plugin(); let pushed = false;
-  p.exitState.write = () => { throw new Error('storage unavailable'); };
-  p.git = { status: async () => ({ repo: true, ahead: 1 }), pushOnExit: async () => { pushed = true; } };
-  await p.pushOnExit();
-  assert.equal(pushed, true);
-  assert.equal(p.exitPushError, '');
-  assert.match(notices.at(-1), /로컬에 저장하지 못했습니다/);
-});
-test('combined action commits once before pushing and clears the message', async () => {
-  const { plugin: p } = plugin(), events = [];
-  p.git = { commit: async message => events.push('commit:' + message), push: async () => events.push('push') };
-  await p.commit(true);
-  assert.deepEqual(events, ['commit:title', 'push']);
-  assert.equal(p.draft, '');
-});
-test('push failure reports successful commit and allows a standalone retry', async () => {
-  const { plugin: p, notices } = plugin(), events = [];
-  p.git = { commit: async () => events.push('commit'), push: async () => { events.push('push'); throw new Error('offline'); } };
-  await p.commit(true);
-  assert.match(notices.at(-1), /커밋은 완료됐지만 Push에 실패/);
-  assert.equal(p.draft, '');
-  assert.equal(p.busy, false);
-  p.git.push = async () => events.push('retry push');
-  await p.perform('Push', () => p.git.push());
-  assert.deepEqual(events, ['commit', 'push', 'retry push']);
-});
-test('commit/save failure never pushes and preserves draft', async () => {
-  for (const failure of ['commit', 'save']) {
-    const { plugin: p } = plugin(); let pushes = 0;
-    p.git = { commit: async () => { throw new Error('commit failed'); }, push: async () => pushes++ };
-    if (failure === 'save') p.saveOpenViews = async () => { throw new Error('save failed'); };
-    await p.commit(true);
-    assert.equal(pushes, 0); assert.equal(p.draft, 'title'); assert.equal(p.busy, false);
-  }
-});
 test('overlapping Git actions are ignored while a command is running', async () => {
   const { plugin: p } = plugin(); let release, calls = 0;
   const running = p.perform('first', () => new Promise(resolve => { release = resolve; }));
@@ -91,34 +31,6 @@ test('overlapping Git actions are ignored while a command is running', async () 
   await p.perform('second', async () => { calls++; });
   release(); await running;
   assert.equal(calls, 0);
-});
-
-test('manual refresh saves editors, pulls from the remote, then updates the local panel', async () => {
-  const { plugin: p } = plugin(), events = [];
-  p.saveOpenViews = async () => events.push('save');
-  p.refresh = async () => events.push('local refresh');
-  p.git = { status: async () => ({ repo: true }), run: async () => 'origin\n', pull: async () => events.push('pull') };
-  await p.pullFromRemote();
-  assert.deepEqual(events, ['save', 'pull', 'local refresh']);
-});
-
-test('manual refresh without a repository or remote still updates the panel without pulling', async () => {
-  for (const repo of [true, false]) {
-    const { plugin: p } = plugin(); let refreshes = 0;
-    p.refresh = async () => refreshes++;
-    p.git = { status: async () => ({ repo }), run: async () => '', pull() { assert.fail('must not pull without a remote'); } };
-    await p.pullFromRemote();
-    assert.equal(refreshes, 1);
-  }
-});
-
-test('failed manual Pull reports the error and still refreshes the local panel', async () => {
-  const { plugin: p, notices } = plugin(); let refreshes = 0;
-  p.refresh = async () => refreshes++;
-  p.git = { status: async () => ({ repo: true }), run: async () => 'origin\n', pull: async () => { throw new Error('Pull 전에 변경사항을 커밋하거나 정리해 주세요.'); } };
-  await p.pullFromRemote();
-  assert.equal(refreshes, 1); assert.equal(p.busy, false);
-  assert.match(notices.at(-1), /Pull 전에/);
 });
 
 test('background refresh stays local and never runs Pull', async () => {
@@ -129,28 +41,31 @@ test('background refresh stays local and never runs Pull', async () => {
   assert.equal(p.snapshot.repo, true);
 });
 
-test('a stale exit push marker is cleared silently when nothing is waiting to be pushed', async () => {
+test('resolution saves editors before applying through the vault and reports backup location', async () => {
   const { plugin: p, notices } = plugin();
-  p.exitPushError = 'Push 완료를 확인하지 못했습니다.';
-  p.git = { status: async () => ({ repo: true, ahead: 0 }) };
-  await p.reportExitPush();
-  assert.deepEqual(notices, []); assert.equal(p.exitPushError, ''); assert.equal(p.exitState.message, '');
-  p.exitPushError = 'offline';
-  p.git = { status: async () => ({ repo: true, ahead: 2 }) };
-  await p.reportExitPush();
-  assert.match(notices[0], /지난 종료 Push: offline/); assert.equal(p.exitPushError, 'offline');
+  const events = [], file = { path: 'note.md' };
+  let content = 'before';
+  p.saveOpenViews = async () => events.push('save');
+  p.app.vault.getFileByPath = () => file;
+  p.app.vault.process = async (target, callback) => {
+    assert.equal(target, file); content = callback(content); events.push('write');
+  };
+  p.conflicts = { resolve: async (preview, apply, write) => {
+    assert.equal(apply, true); assert.equal(preview.name, 'note.md');
+    await write('before', 'both sides'); return 'vault/.git/luggit-backups/example';
+  } };
+  await p.resolveConflict({ name: 'note.md' }, true);
+  assert.deepEqual(events, ['save', 'write']); assert.equal(content, 'both sides');
+  assert.ok(notices.some(message => message.includes('luggit-backups/example')));
 });
 
-test('commit and push still pushes when there is nothing to commit, but not after a real commit failure', async () => {
+test('vault edits made after saving cannot be overwritten by the preview', async () => {
   const { plugin: p, notices } = plugin();
-  const events = [];
-  p.git = { commit: async () => { throw Object.assign(new Error('커밋할 변경이 없습니다.'), { nothingToCommit: true }); }, push: async () => events.push('push') };
-  await p.commit(true);
-  assert.deepEqual(events, ['push']); assert.equal(p.draft, 'title', 'The unused message is kept');
-  assert.match(notices.at(-1), /Push만 했습니다/);
-  await p.commit(false);
-  assert.deepEqual(events, ['push']); assert.match(notices.at(-1), /커밋할 변경이 없습니다/, 'A plain commit still reports it');
-  p.git.commit = async () => { throw new Error('hook failed'); };
-  await p.commit(true);
-  assert.deepEqual(events, ['push'], 'A real commit failure never pushes');
+  let content = 'new editing';
+  p.app.vault.getFileByPath = () => ({ path: 'note.md' });
+  p.app.vault.process = async (_file, callback) => { content = callback(content); };
+  p.conflicts = { resolve: async (_preview, _apply, write) => write('before', 'both sides') };
+  await p.resolveConflict({ name: 'note.md' }, true);
+  assert.equal(content, 'new editing'); assert.equal(p.busy, false);
+  assert.ok(notices.some(message => message.includes('문서가 변경되었습니다')));
 });

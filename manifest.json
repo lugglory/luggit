@@ -3,7 +3,7 @@
   "name": "Luggit",
   "version": "0.1.6",
   "minAppVersion": "1.7.2",
-  "description": "Review, stage, commit, push and pull your vault's Git changes from a sidebar panel.",
+  "description": "Review Git diffs and preserve note content when resolving conflicts from a sidebar panel.",
   "author": "lugglory",
   "authorUrl": "https://github.com/lugglory",
   "isDesktopOnly": true
