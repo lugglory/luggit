@@ -177,9 +177,9 @@ class GitSettings extends PluginSettingTab {
   }
 }
 
-module.exports = class LuggitPlugin extends Plugin {
+module.exports = class LugdiffPlugin extends Plugin {
   async onload() {
-    if (!(this.app.vault.adapter instanceof FileSystemAdapter)) { new Notice('Luggit은 데스크톱 보관함에서 사용할 수 있습니다.'); return; }
+    if (!(this.app.vault.adapter instanceof FileSystemAdapter)) { new Notice('Lugdiff는 데스크톱 보관함에서 사용할 수 있습니다.'); return; }
     registerIcons();
     const saved = await this.loadData();
     this.settings = { executable: saved?.executable || 'git' };

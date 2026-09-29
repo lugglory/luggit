@@ -1,6 +1,6 @@
 {
   "id": "luggit",
-  "name": "Luggit",
+  "name": "Lugdiff",
   "version": "0.2.0",
   "minAppVersion": "1.7.2",
   "description": "Review Git diffs and preserve note content when resolving conflicts from a sidebar panel.",
