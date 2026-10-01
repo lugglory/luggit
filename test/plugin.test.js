@@ -19,6 +19,7 @@ function plugin() {
   const Plugin = load(filename);
   const result = new Plugin();
   result.render = () => {}; result.refresh = async () => {}; result.refreshId = 0;
+  result.settings = { executable: 'git', recentCommitCount: 30 };
   result.saveOpenViews = async () => {}; result.app = { vault: { configDir: '.obsidian' } };
   result.saveData = async () => { throw new Error('Git operations must not write plugin settings'); };
   return { plugin: result, notices };
@@ -35,7 +36,10 @@ test('overlapping Git actions are ignored while a command is running', async () 
 
 test('background refresh stays local and never runs Pull', async () => {
   const { plugin: p } = plugin();
-  p.git = { status: async () => ({ repo: true, files: [] }), recentFiles: async () => [], watch: () => null,
+  p.settings.recentCommitCount = 100;
+  p.git = { status: async () => ({ repo: true, head: true, files: [] }), recentFiles: async (head, count) => {
+    assert.equal(head, true); assert.equal(count, 100); return [];
+  }, watch: () => null,
     run() { assert.fail('background refresh must not query remotes'); }, pull() { assert.fail('background refresh must not pull'); } };
   await Object.getPrototypeOf(p).refresh.call(p);
   assert.equal(p.snapshot.repo, true);

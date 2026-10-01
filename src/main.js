@@ -6,6 +6,7 @@ const { ConflictModal } = require('./conflict-modal');
 const { parseDiff, copyableDiff } = require('./diff');
 const VIEW = 'luggit-changes';
 const GIT_ICON = 'luggit-logo';
+const validCommitCount = value => Number.isInteger(value) && value >= 1 && value <= 1000;
 let sectionSequence = 0;
 
 function registerIcons() {
@@ -174,6 +175,22 @@ class GitSettings extends PluginSettingTab {
     new Setting(this.containerEl).setName('Git 실행 파일').setDesc('git 또는 실행 파일의 절대 경로. 변경 후 플러그인을 다시 켜세요.').addText(input => input.setValue(this.plugin.settings.executable).onChange(async value => {
       this.plugin.settings.executable = value.trim() || 'git'; await this.plugin.saveData(this.plugin.settings);
     }));
+    new Setting(this.containerEl).setName('최근 커밋 조회 개수').setDesc('최근 변경한 파일을 찾을 커밋 수입니다. 1~1000, 기본값 30. 파일은 최대 30개 표시합니다. 변경하면 바로 반영됩니다.').addText(input => {
+      input.inputEl.type = 'number';
+      input.inputEl.min = '1'; input.inputEl.max = '1000'; input.inputEl.step = '1';
+      input.setValue(String(this.plugin.settings.recentCommitCount)).onChange(async value => {
+        const count = Number(value);
+        const valid = validCommitCount(count);
+        input.inputEl.setCustomValidity(valid ? '' : '1~1000 사이의 정수를 입력해 주세요.');
+        input.inputEl.setAttribute('aria-invalid', String(!valid));
+        if (!valid || count === this.plugin.settings.recentCommitCount) return;
+        this.plugin.settings.recentCommitCount = count;
+        try {
+          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.refresh();
+        } catch (error) { this.plugin.fail(error); }
+      });
+    });
   }
 }
 
@@ -182,7 +199,7 @@ module.exports = class LugdiffPlugin extends Plugin {
     if (!(this.app.vault.adapter instanceof FileSystemAdapter)) { new Notice('Lugdiff는 데스크톱 보관함에서 사용할 수 있습니다.'); return; }
     registerIcons();
     const saved = await this.loadData();
-    this.settings = { executable: saved?.executable || 'git' };
+    this.settings = { executable: saved?.executable || 'git', recentCommitCount: validCommitCount(saved?.recentCommitCount) ? saved.recentCommitCount : 30 };
     this.busy = false; this.lastRefreshError = ''; this.refreshId = 0;
     const adapter = this.app.vault.adapter;
     this.git = new GitService(adapter.getBasePath(), { executable: this.settings.executable });
@@ -223,7 +240,7 @@ module.exports = class LugdiffPlugin extends Plugin {
     const id = ++this.refreshId;
     try {
       const status = await this.git.status();
-      if (status.repo) status.recent = await this.git.recentFiles(status.head);
+      if (status.repo) status.recent = await this.git.recentFiles(status.head, this.settings.recentCommitCount);
       if (id !== this.refreshId) return;
       if (status.repo) this.stopGitWatch ||= this.git.watch(() => this.scheduleRefresh(), this.app.vault.configDir);
       this.lastRefreshError = ''; this.snapshot = status; this.render();

@@ -141,10 +141,11 @@ class GitService {
     return lines.map(line => '+' + line).join('\n');
   }
   // Pass the head flag of a status() result to skip repeating its repository checks.
-  async recentFiles(head) {
+  async recentFiles(head, commitCount = 30) {
+    if (!Number.isInteger(commitCount) || commitCount < 1 || commitCount > 1000) throw new Error('최근 커밋 조회 개수는 1~1000 사이의 정수여야 합니다.');
     if (head === undefined) { await this.requireRepo(); head = await this.hasHead(); }
     if (!head) return [];
-    const output = await this.run(['log', '--first-parent', '-n', '30', '--format=', '--name-only', '-z', '--no-renames', '--diff-filter=AMDT']);
+    const output = await this.run(['log', '--first-parent', '-n', String(commitCount), '--format=', '--name-only', '-z', '--no-renames', '--diff-filter=AMDT']);
     const recent = [];
     for (const name of new Set(output.split('\0').filter(Boolean))) {
       this.validatePath(name);

@@ -18,6 +18,8 @@ Requires desktop Obsidian 1.7.2+ and Git. The vault folder must be the Git repos
 
 Click a file in the sidebar to see its diff. You can copy the changes or open the note for editing. The lists update as files change. Recent files show the last commit that changed each file.
 
+In **Settings → Lugdiff**, set how many recent commits to search (1–1000, default 30). Changes apply immediately. The recent file list shows up to 30 distinct files.
+
 For a conflicted note, click **내용 보존하며 충돌 해결** to preview a merge that keeps both sides. Each conflict keeps Git’s `ours` block followed by `theirs`; surrounding text stays in place. Duplicates may remain.
 
 Nothing is applied until you choose **적용하고 해결로 표시**. Lugdiff backs up the originals, writes the result, and stages that file. Commit and sync with Obsidian Git afterward. Opening the preview saves open text documents first.
@@ -37,6 +39,8 @@ Obsidian에서 메모의 Git 변경사항을 보는 사이드바 플러그인입
 ### 사용
 
 파일을 누르면 diff가 열립니다. 변경 내용을 복사하거나 메모를 열어 편집할 수 있고, 파일 목록은 자동으로 갱신됩니다. 최근 파일을 누르면 그 파일을 마지막으로 변경한 커밋의 diff를 보여줍니다.
+
+**설정 → Lugdiff → 최근 커밋 조회 개수**에서 조회할 커밋 수를 바꿀 수 있습니다(1~1000, 기본값 30). 변경하면 바로 반영되며, 최근 파일 목록은 중복을 제외한 최대 30개 파일을 표시합니다.
 
 충돌한 메모는 **내용 보존하며 충돌 해결** 버튼으로 병합 결과를 미리 볼 수 있습니다. 충돌 구간마다 양쪽 내용을 Git의 `ours` → `theirs` 순서로 붙이고, 나머지 부분은 그대로 둡니다. 중복된 내용은 남을 수 있습니다.
 

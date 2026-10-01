@@ -30,6 +30,19 @@ test('recent files retain committed deletions and files no longer present on dis
   assert.match(result.diff, /-recorded content/);
 });
 
+test('recent commit count controls history depth and rejects invalid limits', async t => {
+  const repo = await repository(t);
+  await repo.write('older.md', 'older\n'); await repo.commit('older');
+  await repo.write('newer.md', 'newer\n'); await repo.commit('newer');
+  assert.deepEqual(await repo.git.recentFiles(true, 1), ['newer.md']);
+  assert.deepEqual(await repo.git.recentFiles(true, 2), ['newer.md', 'older.md']);
+  assert.deepEqual(await repo.git.recentFiles(), ['newer.md', 'older.md']);
+  assert.deepEqual(await repo.git.recentFiles(false, 1000), []);
+  for (const count of [0, -1, 1.5, 1001, NaN, Infinity, '10']) {
+    await assert.rejects(repo.git.recentFiles(true, count), /1~1000/);
+  }
+});
+
 test('recent diff uses the latest commit for the exact filename, independent of HEAD and working edits', async t => {
   const repo = await repository(t);
   await repo.write('[a].md', 'original\n'); await repo.write('a.md', 'unrelated\n');
